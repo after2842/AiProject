@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { motion } from "framer-motion";
 import { useRouter } from "next/navigation";
+import Image from "next/image";
 
 /**
  * Minimalistic landing page for a Tax‑Deduction Search website.
@@ -24,12 +25,18 @@ export default function Landing() {
       className="min-h-screen flex flex-col bg-white text-gray-800"
     >
       {/* Header */}
-      <header className="w-full px-6 py-4 flex items-center justify-between">
+      <header className="relative w-full px-6 py-4 flex items-center justify-between">
         <button
-          className="px-4 py-2 bg-pink-200 rounded-full"
+          className="px-4 py-2 bg-white rounded-full flex items-center"
           onClick={handleLogoClick}
         >
-          <h1 className="text-2xl font-semibold tracking-tight">DeductTax</h1>
+          <Image
+            src="/logo.png" // Replace with your actual logo path
+            alt="SILOAM Logo"
+            width={120}
+            height={120}
+            className="mr-2 absolute top-[-30px] left-0"
+          />
         </button>
         <nav className="hidden sm:flex space-x-6 text-sm">
           <a href="#features" className="hover:text-blue-600 transition-colors">
@@ -52,7 +59,7 @@ export default function Landing() {
           transition={{ duration: 1.0 }}
           className="font-bold text-[200px] text-red-500"
         >
-          Discover
+          Buy
         </motion.h1>
         <motion.h1
           initial={{ opacity: 0, y: 20 }}
@@ -60,11 +67,10 @@ export default function Landing() {
           transition={{ duration: 1.0, delay: 0.6 }}
           className="font-bold text-[200px] text-red-500"
         >
-          <span className="text-pink-600">every deduction</span>
+          <span className="text-pink-600">With Voice</span>
         </motion.h1>
         <p className="mt-4 max-w-xl text-gray-600">
-          Upload your transactions and we find your money From tax deduction
-          questions to why you're eligible.
+          No need to read and type. Just talk to us.
         </p>
 
         {/* Search Bar */}
