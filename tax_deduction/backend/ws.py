@@ -19,7 +19,7 @@ SR = 16000                 # 16 kHz
 FRAME_MS = 20              # 20 ms frames
 FRAME_BYTES = int(SR * FRAME_MS / 1000) * 2   # 320 samples * 2 bytes = 640
 PADDING_MS = 300           # VAD hysteresis window (start/end padding)
-VAD_MODE = 2               # 0..3 (higher = stricter)
+VAD_MODE = 3               # 0..3 (higher = stricter)
 
 # -------- App --------
 app = FastAPI()

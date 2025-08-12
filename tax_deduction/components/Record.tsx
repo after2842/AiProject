@@ -60,7 +60,7 @@ export default function VoiceClient() {
               setLiveText(msg.text ?? "");
             } else if (msg.type === "final_transcript") {
               // push finalized line and clear live buffer
-              setFinalLines((L) => [...L, msg.text ?? ""]);
+              setFinalLines((L) => [...L, msg.text ?? "EMPTY"]);
               setLiveText("");
             } else if (msg.type === "hello") {
               pushLog(`server: ${msg.message}`);
