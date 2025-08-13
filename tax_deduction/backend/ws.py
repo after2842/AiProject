@@ -10,9 +10,11 @@ from collections import deque
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import JSONResponse
 import httpx
+import openai
 
 # -------- Config --------
 ELEVEN_API_KEY = "sk_9239cb215c9a6b316962c1602071d352c8023e7f0e55697c"
+OPENAI_API_KEY = "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"
 STT_URL = "https://api.elevenlabs.io/v1/speech-to-text"
 
 SR = 16000                 # 16 kHz
@@ -136,3 +138,12 @@ async def ws_endpoint(ws: WebSocket):
                     pass
         # Normal close
         return
+
+
+def send_text_to_openai(text: str):
+    openai.api_key = OPENAI_API_KEY
+    response = openai.ChatCompletion.create(
+        model="gpt-5-nano",
+        messages=[{"role": "user", "content": text}],
+    )
+    return response.choices[0].message.content
