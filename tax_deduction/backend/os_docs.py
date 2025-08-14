@@ -22,7 +22,7 @@ from requests_aws4auth import AWS4Auth
 from opensearchpy import OpenSearch, RequestsHttpConnection, helpers
 
 REGION   = os.getenv("AWS_REGION", "us-west-2")
-TABLE    = os.getenv("DDB_TABLE", "catalog")
+TABLE    = os.getenv("DDB_TABLE", "catalog_5x")
 OS_HOST  = os.environ["OS_HOST"]              # e.g. search-...es.amazonaws.com
 OS_INDEX = os.getenv("OS_INDEX", "catalog_search_v1")
 
@@ -99,7 +99,7 @@ def ddb_scan_products() -> Dict[str, Dict[str, Any]]:
                 pid = it.get("product_gid") or str(it.get("SK",""))[8:]
                 out[pid] = {
                     "shop_domain": it.get("shop_domain"),
-                    "product_title": it.get("title"),
+                    "product_title": it.get("seo", {}).get("title"),
                     "handle": it.get("handle"),
                     "vendor": it.get("vendor"),
                     "product_type": it.get("productType") or it.get("product_type"),

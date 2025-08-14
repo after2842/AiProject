@@ -6,14 +6,14 @@ from typing import Any, Dict, List, Optional
 import boto3, botocore
 import requests
 
-SHOP = "global.shop.smtown.com"
+SHOP = "tentree.com"#"global.shop.smtown.com"
 if not SHOP:
     print("Set SHOPIFY_SHOP_DOMAIN (e.g., myshop.myshopify.com)", file=sys.stderr)
     sys.exit(2)
 
 API_VERSION = os.getenv("SHOPIFY_API_VERSION", "2025-07")
 REGION = os.getenv("AWS_REGION", "us-west-2")
-TABLE = os.getenv("DDB_TABLE", "catalog_4")
+TABLE = os.getenv("DDB_TABLE", "catalog_tentree")
 
 SF_URL = f"https://{SHOP}/api/{API_VERSION}/graphql.json"
 HDRS = {
@@ -50,6 +50,7 @@ query Page($first:Int!, $after:String) {
               availableForSale
               price { amount currencyCode }
               image { url altText }
+              selectedOptions { name value }
             }
           }
         }
@@ -119,9 +120,9 @@ def main():
     after = None
     total_products = total_variants = 0
     pk = f"MERCHANT#{SHOP}"
-
+    i:int = 1
     while True:
-        i:int = 1
+        
         print(f"Page {i}")
         data = gql(PAGE_QUERY, {"first": 25, "after": after})
         conn = data["products"]
@@ -146,6 +147,7 @@ def main():
                 "images": flatten((p.get("images") or {}).get("edges", [])),
                 "GSI1_var_search": prod_gid,
                 "GSI1SK": f"HANDLE#{p.get('handle')}" if p.get("handle") else None,
+                "selectedOptions": p.get("selectedOptions") or [],
             }
 
             # Write product
