@@ -99,6 +99,8 @@ def ddb_scan_products() -> Dict[str, Dict[str, Any]]:
                 pid = it.get("product_gid") or str(it.get("SK",""))[8:]
                 out[pid] = {
                     "shop_domain": it.get("shop_domain"),
+                    "description": it.get("description"),
+                    "descriptionHtml": it.get("descriptionHtml"),
                     "product_title": it.get("seo", {}).get("title"),
                     "handle": it.get("handle"),
                     "vendor": it.get("vendor"),
@@ -205,8 +207,7 @@ def build_docs(products: Dict[str, Dict[str, Any]],
                     "vendor":        prod.get("vendor") or v.get("vendor"),
                     "product_type":  prod.get("product_type") or v.get("productType"),
                     "tags":          prod.get("tags") or v.get("tags") or [],
-                    "min_price":     prod.get("min_price"),
-                    "max_price":     prod.get("max_price"),
+
 
                     # Variant-level
                     "variant_id":    variant_id,
