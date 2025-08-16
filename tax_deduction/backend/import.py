@@ -5,7 +5,7 @@ from collections import defaultdict
 import boto3
 
 # ---------- env ----------
-SHOP         = os.environ["SHOP"]                 # e.g. myshop.myshopify.com
+SHOP         = "www.paige.com"              # e.g. myshop.myshopify.com
 ADMIN_TOKEN  = os.environ["ADMIN_TOKEN"]          # Admin API access token
 API_VERSION  = os.getenv("API_VERSION", "2025-07")
 REGION       = os.getenv("AWS_REGION", "us-west-2")

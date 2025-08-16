@@ -98,16 +98,20 @@ def ddb_scan_products() -> Dict[str, Dict[str, Any]]:
             if it.get("entity") == "product":
                 pid = it.get("product_gid") or str(it.get("SK",""))[8:]
                 out[pid] = {
-                    "shop_domain": it.get("shop_domain"),
+                    "SK": it.get("SK"),
                     "description": it.get("description"),
                     "descriptionHtml": it.get("descriptionHtml"),
-                    "product_title": it.get("seo", {}).get("title"),
+                    "featuredImage": it.get("featuredImage"),
+                    "GSI1SK": it.get("GSI1SK"),
                     "handle": it.get("handle"),
+                    "images": it.get("images"),
+                    "productType": it.get("productType"),
+                    "selectedOptions": it.get("selectedOptions"),
+                    "seo": it.get("seo"),
+                    "shop_domain": it.get("shop_domain"),
+                    "tags": it.get("tags"),
+                    "title": it.get("title"),
                     "vendor": it.get("vendor"),
-                    "product_type": it.get("productType") or it.get("product_type"),
-                    "tags": it.get("tags") or [],
-                    "min_price": _to_float(it.get("priceMin")),
-                    "max_price": _to_float(it.get("priceMax")),
                 }
         eks = resp.get("LastEvaluatedKey")
         if not eks:

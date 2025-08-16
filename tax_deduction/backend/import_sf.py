@@ -6,14 +6,14 @@ from typing import Any, Dict, List, Optional
 import boto3, botocore
 import requests
 
-SHOP = "tentree.com"#"global.shop.smtown.com"
+SHOP = "goodfair.com"#"global.shop.smtown.com"
 if not SHOP:
     print("Set SHOPIFY_SHOP_DOMAIN (e.g., myshop.myshopify.com)", file=sys.stderr)
     sys.exit(2)
 
 API_VERSION = os.getenv("SHOPIFY_API_VERSION", "2025-07")
 REGION = os.getenv("AWS_REGION", "us-west-2")
-TABLE = os.getenv("DDB_TABLE", "catalog_tentree")
+TABLE = os.getenv("DDB_TABLE", "catalog_goodfair")
 
 SF_URL = f"https://{SHOP}/api/{API_VERSION}/graphql.json"
 HDRS = {
@@ -122,62 +122,66 @@ def main():
     pk = f"MERCHANT#{SHOP}"
     i:int = 1
     while True:
-        
-        print(f"Page {i}")
-        data = gql(PAGE_QUERY, {"first": 25, "after": after})
-        conn = data["products"]
-        for edge in conn["edges"]:
-            p = edge["node"]
-            prod_gid = p["id"]
-            product_item = {
-                "PK": pk,
-                "SK": f"PRODUCT#{prod_gid}",
-                "entity": "product",
-                "shop_domain": SHOP,
-                "product_gid": prod_gid,
-                "handle": p.get("handle"),
-                "title": p.get("title"),
-                "vendor": p.get("vendor"),
-                "productType": p.get("productType"),
-                "tags": p.get("tags") or [],
-                "description": p.get("description"),
-                "descriptionHtml": p.get("descriptionHtml"),
-                "seo": p.get("seo"),
-                "featuredImage": p.get("featuredImage") or {},
-                "images": flatten((p.get("images") or {}).get("edges", [])),
-                "GSI1_var_search": prod_gid,
-                "GSI1SK": f"HANDLE#{p.get('handle')}" if p.get("handle") else None,
-                "selectedOptions": p.get("selectedOptions") or [],
-            }
 
-            # Write product
-            table.put_item(Item=product_item)
-            total_products += 1
-
-            # Variants
-            for v in flatten((p.get("variants") or {}).get("edges", [])):
-                price = (v.get("price") or {}).get("amount")
-                variant_item = {
+        try:
+            print(f"Page {i}")
+            data = gql(PAGE_QUERY, {"first": 25, "after": after})
+            conn = data["products"]
+            for edge in conn["edges"]:
+                p = edge["node"]
+                prod_gid = p["id"]
+                product_item = {
                     "PK": pk,
-                    "SK": f"PRODUCT#{prod_gid}#VARIANT#{v['id']}",
-                    "entity": "variant",
+                    "SK": f"PRODUCT#{prod_gid}",
+                    "entity": "product",
                     "shop_domain": SHOP,
                     "product_gid": prod_gid,
-                    "variant_gid": v["id"],
-                    "title": v.get("title"),
-                    "sku": v.get("sku"),
-                    "availableForSale": bool(v.get("availableForSale")),
-                    "price": to_decimal(price),
-                    "image": v.get("image") or {},
+                    "handle": p.get("handle"),
+                    "title": p.get("title"),
+                    "vendor": p.get("vendor"),
+                    "productType": p.get("productType"),
+                    "tags": p.get("tags") or [],
+                    "description": p.get("description"),
+                    "descriptionHtml": p.get("descriptionHtml"),
+                    "seo": p.get("seo"),
+                    "featuredImage": p.get("featuredImage") or {},
+                    "images": flatten((p.get("images") or {}).get("edges", [])),
                     "GSI1_var_search": prod_gid,
+                    "GSI1SK": f"HANDLE#{p.get('handle')}" if p.get("handle") else None,
+                    "selectedOptions": p.get("selectedOptions") or [],
                 }
-                table.put_item(Item=variant_item)
-                total_variants += 1
-        i += 1
 
-        if not conn["pageInfo"]["hasNextPage"]:
-            break
-        after = conn["pageInfo"]["endCursor"]
+                # Write product
+                table.put_item(Item=product_item)
+                total_products += 1
+
+                # Variants
+                for v in flatten((p.get("variants") or {}).get("edges", [])):
+                    price = (v.get("price") or {}).get("amount")
+                    variant_item = {
+                        "PK": pk,
+                        "SK": f"PRODUCT#{prod_gid}#VARIANT#{v['id']}",
+                        "entity": "variant",
+                        "shop_domain": SHOP,
+                        "product_gid": prod_gid,
+                        "variant_gid": v["id"],
+                        "title": v.get("title"),
+                        "sku": v.get("sku"),
+                        "availableForSale": bool(v.get("availableForSale")),
+                        "price": to_decimal(price),
+                        "image": v.get("image") or {},
+                        "GSI1_var_search": prod_gid,
+                    }
+                    table.put_item(Item=variant_item)
+                    total_variants += 1
+            i += 1
+
+            if not conn["pageInfo"]["hasNextPage"]:
+                break
+            after = conn["pageInfo"]["endCursor"]
+        except Exception as e:
+            print(f"Error: {e}")
+        
 
     print(f"Done: products={total_products}, variants={total_variants}")
 
