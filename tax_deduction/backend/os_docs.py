@@ -87,7 +87,7 @@ def ddb_scan_products() -> Dict[str, Dict[str, Any]]:
     """
     Build a lookup: product_gid -> product summary fields used for denormalization.
     """
-    proj = "#p,SK,entity,shop_domain,product_gid,handle,title,vendor,productType,tags,priceMin,priceMax"
+    proj = "#p,SK,entity,shop_domain,product_gid,handle,title,vendor,productType,tags,priceMin,priceMax,description,descriptionHtml,featuredImage,images,selectedOptions,seo"
     ean  = {"#p":"PK"}
     out: Dict[str, Dict[str, Any]] = {}
     eks = None
@@ -102,7 +102,6 @@ def ddb_scan_products() -> Dict[str, Dict[str, Any]]:
                     "description": it.get("description"),
                     "descriptionHtml": it.get("descriptionHtml"),
                     "featuredImage": it.get("featuredImage"),
-                    "GSI1SK": it.get("GSI1SK"),
                     "handle": it.get("handle"),
                     "images": it.get("images"),
                     "productType": it.get("productType"),

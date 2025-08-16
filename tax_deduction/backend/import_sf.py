@@ -6,14 +6,14 @@ from typing import Any, Dict, List, Optional
 import boto3, botocore
 import requests
 
-SHOP = "goodfair.com"#"global.shop.smtown.com"
+SHOP = "suta.in"#"global.shop.smtown.com"
 if not SHOP:
     print("Set SHOPIFY_SHOP_DOMAIN (e.g., myshop.myshopify.com)", file=sys.stderr)
     sys.exit(2)
 
 API_VERSION = os.getenv("SHOPIFY_API_VERSION", "2025-07")
 REGION = os.getenv("AWS_REGION", "us-west-2")
-TABLE = os.getenv("DDB_TABLE", "catalog_goodfair")
+TABLE = os.getenv("DDB_TABLE", "catalog_suta")
 
 SF_URL = f"https://{SHOP}/api/{API_VERSION}/graphql.json"
 HDRS = {
