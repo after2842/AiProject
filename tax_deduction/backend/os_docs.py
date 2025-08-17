@@ -122,7 +122,7 @@ def ddb_scan_variants_grouped() -> Dict[str, List[Dict[str, Any]]]:
     Group variants by product_gid so we can compute num_other_variants & option summaries.
     returns: { product_gid: [variant_item, ...] }
     """
-    proj = "#p,SK,entity,shop_domain,product_gid,variant_gid,title,selectedOptions,price,availableForSale,image,a11y,handle,vendor,productType,tags"
+    proj = "#p,SK,entity,shop_domain,product_gid,variant_gid,title,selectedOptions,price,availableForSale,image,handle,vendor,productType,tags"
     ean  = {"#p":"PK"}
     groups: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
     eks = None
@@ -214,11 +214,11 @@ def build_docs(products: Dict[str, Dict[str, Any]],
 
                     # Variant-level
                     "variant_id":    variant_id,
-                    "title":         v.get("title"),
+                    "variant_title": v.get("title"),
                     "options":       v.get("selectedOptions") or [],
                     "price":         _to_float(v.get("price")),
-                    "available":     bool(v.get("availableForSale", True)),
-                    "image_url":     ((v.get("image") or {}) or {}).get("url"),
+                    "available":     bool(v.get("availableForSale", False)),
+                    "image_url":     ((v.get("image") or {}) or {}).get("url").get("S", ""),
                     "alt_text_all":  ((v.get("a11y") or {}) or {}).get("fit_note"),
 
                     # New: sibling awareness
