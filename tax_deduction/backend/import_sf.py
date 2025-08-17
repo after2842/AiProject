@@ -6,14 +6,14 @@ from typing import Any, Dict, List, Optional
 import boto3, botocore
 import requests
 
-SHOP = "pelacase.ca"#"global.shop.smtown.com"
+SHOP = "www.gotyu-underwear.com"#"global.shop.smtown.com"
 if not SHOP:
     print("Set SHOPIFY_SHOP_DOMAIN (e.g., myshop.myshopify.com)", file=sys.stderr)
     sys.exit(2)
 
 API_VERSION = os.getenv("SHOPIFY_API_VERSION", "2025-07")
 REGION = os.getenv("AWS_REGION", "us-west-2")
-TABLE = os.getenv("DDB_TABLE", "catalog_pelacase")
+TABLE = os.getenv("DDB_TABLE", "catalog_gotyu-underwear")
 
 SF_URL = f"https://{SHOP}/api/{API_VERSION}/graphql.json"
 HDRS = {
@@ -122,7 +122,7 @@ def main():
     pk = f"MERCHANT#{SHOP}"
     i:int = 1
     while True:
-
+        time.sleep(1)
         try:
             print(f"Page {i}")
             data = gql(PAGE_QUERY, {"first": 25, "after": after})

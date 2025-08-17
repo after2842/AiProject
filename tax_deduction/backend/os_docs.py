@@ -22,9 +22,9 @@ from requests_aws4auth import AWS4Auth
 from opensearchpy import OpenSearch, RequestsHttpConnection, helpers
 
 REGION   = os.getenv("AWS_REGION", "us-west-2")
-TABLE    = os.getenv("DDB_TABLE", "catalog_5x")
-OS_HOST  = os.environ["OS_HOST"]              # e.g. search-...es.amazonaws.com
-OS_INDEX = os.getenv("OS_INDEX", "catalog_search_v1")
+#TABLE    = os.getenv("DDB_TABLE", "catalog_tentree")
+OS_HOST  = "search-siloam-v01-qoptmnyzfw527t36u56xvzhsje.us-west-2.es.amazonaws.com"      
+OS_INDEX = os.getenv("OS_INDEX", "catalog_search_v01")
 
 # ---------- OpenSearch client ----------
 def make_os_client():
@@ -41,49 +41,50 @@ def make_os_client():
 
 # ---------- Optional: create index with minimal mapping ----------
 def ensure_index(os_client: OpenSearch, index: str):
-    if os_client.indices.exists(index):
+    if os_client.indices.exists(index=index):
         return
     mapping = {
         "settings": {
-            "index": {"number_of_shards": 2, "number_of_replicas": 1}
+            "index": {"number_of_shards": 2, "number_of_replicas": 2}
         },
         "mappings": {
             "properties": {
-                "merchant":      {"type":"keyword"},
-                "product_id":    {"type":"keyword"},
-                "variant_id":    {"type":"keyword"},
-                "product_title": {"type":"text"},
-                "handle":        {"type":"keyword"},
-                "vendor":        {"type":"keyword"},
-                "product_type":  {"type":"keyword"},
-                "tags":          {"type":"keyword"},
-                "title":         {"type":"text"},
-                "options": {
-                    "properties": {"name":{"type":"keyword"}, "value":{"type":"keyword"}}
-                },
-                "price":         {"type":"double"},
-                "available":     {"type":"boolean"},
-                "image_url":     {"type":"keyword"},
-                "alt_text_all":  {"type":"text"},
-                "min_price":     {"type":"double"},
-                "max_price":     {"type":"double"},
-                "num_other_variants":            {"type":"integer"},
-                "num_other_available_variants":  {"type":"integer"},
-                # dynamic object; safe because option names are few (e.g., Size, Color)
-                "other_options":                {"type":"object", "dynamic": True},
-                "other_available_options":      {"type":"object", "dynamic": True},
-                "updated_at":    {"type":"date", "format":"epoch_second"},
-                # If you add semantic search later, add: "embedding": {"type":"knn_vector", "dimension": 768}
+                # Product-level fields (denormalized)
+                "merchant":      {"type": "keyword"},
+                "product_id":    {"type": "keyword"},
+                "product_title": {"type": "text"},
+                "handle":        {"type": "keyword"},
+                "vendor":        {"type": "keyword"},
+                "product_type":  {"type": "keyword"},
+                "tags":          {"type": "keyword"},
+                "featuredImage": {"type": "keyword"},
+                "product_description":   {"type": "text"},
+                "descriptionHtml": {"type": "text"},
+                
+                # Variant-level fields
+                "variant_id":    {"type": "keyword"},
+                "variant_title": {"type": "text"},
+                "variant_description": {"type": "text"},
+                "options":       {"type": "object", "dynamic": True},
+                "price":         {"type": "double"},
+                "available":     {"type": "boolean"},
+                "image_url":     {"type": "keyword"},
+                
+                # Sibling awareness fields
+                "num_other_variants": {"type": "integer"},
+                
+                # Timestamp
+                "updated_at":    {"type": "date", "format": "epoch_second"}
             }
         }
     }
-    os_client.indices.create(index, body=mapping)
+    os_client.indices.create(index=index, body=mapping)
     print(f"Created index: {index}")
 
 # ---------- Dynamo helpers ----------
-ddb = boto3.resource("dynamodb", region_name=REGION).Table(TABLE)
+# ddb = boto3.resource("dynamodb", region_name=REGION).Table(TABLE)
 
-def ddb_scan_products() -> Dict[str, Dict[str, Any]]:
+def ddb_scan_products(ddb) -> Dict[str, Dict[str, Any]]:
     """
     Build a lookup: product_gid -> product summary fields used for denormalization.
     """
@@ -109,7 +110,7 @@ def ddb_scan_products() -> Dict[str, Dict[str, Any]]:
                     "seo": it.get("seo"),
                     "shop_domain": it.get("shop_domain"),
                     "tags": it.get("tags"),
-                    "title": it.get("title"),
+                    "product_title": it.get("title"),
                     "vendor": it.get("vendor"),
                 }
         eks = resp.get("LastEvaluatedKey")
@@ -117,12 +118,12 @@ def ddb_scan_products() -> Dict[str, Dict[str, Any]]:
             break
     return out
 
-def ddb_scan_variants_grouped() -> Dict[str, List[Dict[str, Any]]]:
+def ddb_scan_variants_grouped(ddb) -> Dict[str, List[Dict[str, Any]]]:
     """
     Group variants by product_gid so we can compute num_other_variants & option summaries.
     returns: { product_gid: [variant_item, ...] }
     """
-    proj = "#p,SK,entity,shop_domain,product_gid,variant_gid,title,selectedOptions,price,availableForSale,image,handle,vendor,productType,tags"
+    proj = "#p,SK,entity,shop_domain,product_gid,variant_gid,title,selectedOptions,price,availableForSale,image,handle,vendor,productType,tags, description"
     ean  = {"#p":"PK"}
     groups: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
     eks = None
@@ -151,8 +152,25 @@ def _options_to_map(selected_options: List[Dict[str, Any]]) -> Dict[str, str]:
             out[str(n)] = str(v)
     return out
 
+def _extract_image_url(image_data) -> str:
+    """Safely extract image URL from DynamoDB image data"""
+    if not image_data:
+        return ""
+    try:
+        # Handle different possible structures
+        if isinstance(image_data, dict):
+            if "url" in image_data:
+                url_data = image_data["url"]
+                if isinstance(url_data, dict) and "S" in url_data:
+                    return url_data["S"]  # DynamoDB String attribute
+                elif isinstance(url_data, str):
+                    return url_data
+        return ""
+    except:
+        return ""
+
 def summarize_other_options(all_variants: List[Dict[str, Any]],
-                            current_variant_id: str) -> Tuple[Dict[str, List[str]], Dict[str, List[str]], int, int]:
+                            current_variant_id: str) -> int:
     """
     Build:
       - other_options: union of values for each optionName across siblings (excludes this variant's value)
@@ -182,7 +200,7 @@ def summarize_other_options(all_variants: List[Dict[str, Any]],
     # For "other_options" we already excluded the current variant (above).
     other_options = {n: sorted(list(vals)) for n, vals in all_sets.items()}
     other_available_options = {n: sorted(list(vals)) for n, vals in avail_sets.items()}
-    return other_options, other_available_options, total, total_avail
+    return total
 
 # ---------- Build & index docs ----------
 def build_docs(products: Dict[str, Dict[str, Any]],
@@ -196,36 +214,36 @@ def build_docs(products: Dict[str, Dict[str, Any]],
         for v in var_list:
             variant_id = v.get("variant_gid") or str(v.get("SK",""))[8:]
             # Summaries across siblings:
-            other_opts, other_avail_opts, n_other, n_other_avail = summarize_other_options(var_list, variant_id)
+            other_variants = summarize_other_options(var_list, variant_id)
 
             doc = {
                 "_index": OS_INDEX,
                 "_id": variant_id,
                 "_source": {
                     # Product-level (denormalized)
-                    "merchant":      prod.get("shop_domain") or v.get("shop_domain"),
+                    "merchant":      prod.get("shop_domain") or "",
                     "product_id":    product_id,
-                    "product_title": prod.get("product_title") or v.get("product_title") or v.get("title"),
-                    "handle":        prod.get("handle") or v.get("handle"),
-                    "vendor":        prod.get("vendor") or v.get("vendor"),
-                    "product_type":  prod.get("product_type") or v.get("productType"),
-                    "tags":          prod.get("tags") or v.get("tags") or [],
-
+                    "product_title": prod.get("product_title") or "",
+                    "handle":        prod.get("handle") or "",
+                    "vendor":        prod.get("vendor") or "",
+                    "product_type":  prod.get("productType") or "",
+                    "tags":          prod.get("tags") or [],
+                    "featuredImage": _extract_image_url(prod.get("featuredImage")),
+                    "product_description":   prod.get("description") or "",
+                    "descriptionHtml": prod.get("descriptionHtml") or "",
 
                     # Variant-level
                     "variant_id":    variant_id,
-                    "variant_title": v.get("title"),
-                    "options":       v.get("selectedOptions") or [],
-                    "price":         _to_float(v.get("price")),
+                    "variant_title": v.get("title") or "",
+                    "variant_description": v.get("description") or "",
+                    "options":       v.get("selectedOptions") or {},
+                    "price":         _to_float(v.get("price")) or "",
                     "available":     bool(v.get("availableForSale", False)),
-                    "image_url":     ((v.get("image") or {}) or {}).get("url").get("S", ""),
-                    "alt_text_all":  ((v.get("a11y") or {}) or {}).get("fit_note"),
+                    "image_url":     _extract_image_url(v.get("image")),
 
                     # New: sibling awareness
-                    "num_other_variants":           n_other,
-                    "num_other_available_variants": n_other_avail,
-                    "other_options":                other_opts,
-                    "other_available_options":      other_avail_opts,
+                    "num_other_variants":           other_variants,
+
 
                     "updated_at":   now
                 }
@@ -233,22 +251,26 @@ def build_docs(products: Dict[str, Dict[str, Any]],
             yield doc
 
 def main():
-    print("Loading products…")
-    products = ddb_scan_products()
-    print(f"Products loaded: {len(products)}")
+    brand_list = ["goodfair", "outrage", "tentree", "allbirds","adored","aloyoga", "gruntstyle","knix", "misslola", "outdoorvoices", "pangaia", "rachelriley"]
+    for brand in brand_list:
+        TABLE = os.getenv("DDB_TABLE", f"catalog_{brand}")
+        ddb = boto3.resource("dynamodb", region_name=REGION).Table(TABLE)
+        print("Loading products…")
+        products = ddb_scan_products(ddb)
+        print(f"Products loaded: {len(products)}")
 
-    print("Grouping variants…")
-    grouped = ddb_scan_variants_grouped()
-    total_variants = sum(len(vs) for vs in grouped.values())
-    print(f"Products with variants: {len(grouped)} | Variants: {total_variants}")
+        print("Grouping variants…")
+        grouped = ddb_scan_variants_grouped(ddb)
+        total_variants = sum(len(vs) for vs in grouped.values())
+        print(f"Products with variants: {len(grouped)} | Variants: {total_variants}")
 
-    os_client = make_os_client()
-    ensure_index(os_client, OS_INDEX)
+        os_client = make_os_client()
+        ensure_index(os_client, OS_INDEX)
 
-    print("Indexing variant docs to OpenSearch…")
-    actions = build_docs(products, grouped)
-    helpers.bulk(os_client, actions, chunk_size=1000, request_timeout=120)
-    print("Backfill complete.")
+        print("Indexing variant docs to OpenSearch…")
+        actions = build_docs(products, grouped)
+        helpers.bulk(os_client, actions, chunk_size=1000, request_timeout=120)
+        print("Backfill complete.")
 
 if __name__ == "__main__":
     main()
