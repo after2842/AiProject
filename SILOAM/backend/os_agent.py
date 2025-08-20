@@ -288,7 +288,7 @@ async def main() -> None:
             context=ctx,
             max_turns=2,
         )
-        print("✅ Query agent output:", query_result.final_output)
+        print("✅ Query agent output:  ", query_result.final_output)
         print("---")
     except Exception as e:
         print(f"❌ Query agent failed: {e}")
