@@ -21,7 +21,8 @@ ROLE
 You write OpenSearch Search API request bodies (JSON only) to find products in the `products` index.
 
 OUTPUT CONTRACT
-- Return a single JSON object that is a valid OpenSearch query body.
+- Return a single JSON object with the query wrapped in a 'body' field.
+- Format: {"body": {your_opensearch_query_here}}
 - No prose, no markdown, no comments, no extra keys outside the body schema.
 - Prefer relevance sorting by default; only add "sort" if the user asks.
 
@@ -174,6 +175,15 @@ NOTES
 - If descriptions are missing, fall back to titles (product_title, variant_title).
 - Keep text queries in must/should and constraints in filter.
 
+CRITICAL: Wrap your entire query in a "body" field like this:
+{
+  "body": {
+    "query": {...},
+    "filter": {...},
+    "_source": {...}
+  }
+}
+
 """
 
 
@@ -232,18 +242,26 @@ execute_opensearch_search = FunctionTool(
     params_json_schema={
         "type": "object",
         "properties": {
-            "body": {"type": "object", "description": "The OpenSearch search body (DSL)"}
+            "body": {"type": "object", "description": "The OpenSearch search query"}
         },
         "required": ["body"]
     },
     on_invoke_tool=_execute_search_handler,
 )
 
+@function_tool
+def record_input_arguments(ctx: RunContextWrapper[UserContext], args_json: str) -> str:
+    """Record the input arguments to a file"""
+    print(f"🔍 Recording input arguments: {args_json}")
+    with open("input_arguments.json", "w") as f:
+        f.write(args_json)
+    return "Input arguments recorded to input_arguments.json"
+
 # --- (2) Generate query agent ---
 generate_query_agent = Agent[UserContext](
     name="Generate OpenSearch Query Agent",
     instructions=OS_QUERY_INSTRUCTIONS,
-    model="gpt-4o",
+    model="gpt-5-nano-2025-08-07",
     model_settings=ModelSettings(
         openai_api_key=os.getenv("OPENAI_API_KEY")  # Explicitly pass API key
     )
@@ -253,20 +271,21 @@ generate_query_agent = Agent[UserContext](
 opensearch_agent = Agent[UserContext](
     name="OpenSearch Query Agent",
     instructions=(
-        "You build strict OpenSearch queries for the user's request, then execute them.\n"
-        "Understand the user's request and generate a valid OpenSearch query body and execute it.\n"
-        "Step 1) Call generate_query_agent to produce a valid query body.\n"
-        "Step 2) Call execute_opensearch_search to retrieve the results from the OpenSearch index.\n"
+        "You MUST follow these steps in EXACT order. DO NOT USE THE TOOLS OUTSIDE OF THESE STEPS:\n"
+        "Step 1) ALWAYS call generate_query_agent first with the user's request. This is MANDATORY and cannot be skipped.\n"
+        "Step 2) Record the result of generate_query_agent. use record_input_arguments tool to do this. \n"
+        "Step 3) Pass the result of record_input_arguments to execute_opensearch_search. \n"
     ),
-    model="gpt-4o",
+    model="gpt-5-2025-08-07",
     tools=[generate_query_agent.as_tool(
         tool_name="generate_opensearch_query",
         tool_description="Generate a valid OpenSearch query body for the user's request.",
     ), 
-    execute_opensearch_search
+    execute_opensearch_search,
+    record_input_arguments
     ],
     model_settings=ModelSettings(
-        tool_choice="generate_opensearch_query",
+        tool_choice="none",
         openai_api_key=os.getenv("OPENAI_API_KEY")  # Explicitly pass API key
     ),
     tool_use_behavior=StopAtTools(stop_at_tool_names=["execute_opensearch_search"]),
@@ -279,31 +298,39 @@ async def main() -> None:
 
     user_utterance = input("Enter your search query: ")
     
-    # Debug: Let's see what the generate_query_agent produces first
-    print("🔍 Testing generate_query_agent directly...")
-    try:
-        query_result = await Runner.run(
-            starting_agent=generate_query_agent,
-            input=user_utterance,
-            context=ctx,
-            max_turns=2,
-        )
-        print("✅ Query agent output:  ", query_result.final_output)
-        print("---")
-    except Exception as e:
-        print(f"❌ Query agent failed: {e}")
-        return
+    # # Debug: Let's see what the generate_query_agent produces first
+    # print("🔍 Testing generate_query_agent directly...")
+    # try:
+    #     query_result = await Runner.run(
+    #         starting_agent=generate_query_agent,
+    #         input=user_utterance,
+    #         context=ctx,
+    #         max_turns=2,
+    #     )
+    #     print("✅ Query agent output:  ", query_result.final_output)
+    #     print("---")
+    # except Exception as e:
+    #     print(f"❌ Query agent failed: {e}")
+    #     return
     
     print("🚀 Now testing full opensearch_agent...")
-    result = await Runner.run(
-        starting_agent=opensearch_agent,
-        input=user_utterance,
-        context=ctx,  # typed context is available inside tools
-        max_turns=6,  # enough for: build -> execute
-    )
+    try:
+        result = await Runner.run(
+            starting_agent=opensearch_agent,
+            input=user_utterance,
+            context=ctx,  # typed context is available inside tools
+            max_turns=3,  # enough for: build -> execute
+        )
+        print("✅ Full agent succeeded!")
+        print("FINAL OUTPUT:\n", result.final_output)
+    except Exception as e:
+        print(f"❌ Full agent failed: {e}")
+        print(f"❌ Error type: {type(e)}")
+        if hasattr(e, '__dict__'):
+            print(f"❌ Error details: {e.__dict__}")
 
     # The final output is execute_opensearch_search's JSON string
-    print("FINAL OUTPUT:\n", result.final_output)
+    #print("FINAL OUTPUT:\n", result.final_output)
 
 if __name__ == "__main__":
     asyncio.run(main())
