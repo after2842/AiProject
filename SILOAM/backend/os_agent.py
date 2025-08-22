@@ -212,7 +212,7 @@ class UserContext:
     default_index: str = "catalog_search_v01"
 
 async def _execute_search_handler(ctx: RunContextWrapper[UserContext], args_json: str) -> str:
-    """Handler for execute_opensearch_search tool"""
+    """It executes the OpenSearch search query and returns the result as a JSON string."""
     try:
         print(f"🔍 Handler received args_json: {args_json}")
         args = json.loads(args_json)
@@ -271,10 +271,8 @@ generate_query_agent = Agent[UserContext](
 opensearch_agent = Agent[UserContext](
     name="OpenSearch Query Agent",
     instructions=(
-        "You MUST follow these steps in EXACT order. DO NOT USE THE TOOLS OUTSIDE OF THESE STEPS:\n"
-        "Step 1) ALWAYS call generate_query_agent first with the user's request. This is MANDATORY and cannot be skipped.\n"
-        "Step 2) Record the result of generate_query_agent. use record_input_arguments tool to do this. \n"
-        "Step 3) Pass the result of record_input_arguments to execute_opensearch_search. \n"
+        "You MUST call generate_query_agent first in order to use execute_opensearch_search.\n"
+        "You don't know how to make OpenSearch queries. You only know how to use the tools provided to you.\n"
     ),
     model="gpt-5-2025-08-07",
     tools=[generate_query_agent.as_tool(
