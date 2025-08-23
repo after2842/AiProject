@@ -2,6 +2,7 @@ import React, { useRef, useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { useRouter } from "next/navigation";
 import ReactMarkdown from "react-markdown";
+import Image from "next/image";
 
 export default function MainPage() {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -65,11 +66,16 @@ export default function MainPage() {
       {/* Header */}
       <header className="w-full px-6 py-4 flex items-center justify-between">
         <button
-          className="px-4 py-2 bg-pink-200 rounded-full"
+          className="px-4 py-2 bg-white rounded-full"
           onClick={handleLogoClick}
         >
-          <h1 className="text-2xl font-semibold tracking-tight">DeductTax</h1>
+          <h1 className="text-2xl font-semibold tracking-tight text-pink-600">
+            SILOAM
+          </h1>
         </button>
+        <div className="min-w-[40vw] rounded-full bg-white py-2 px-8 text-center text-gray-500">
+          ALO yoga pants for women
+        </div>
         <nav className="hidden sm:flex space-x-6 text-sm">
           <a href="#features" className="hover:text-blue-600 transition-colors">
             Features
@@ -91,7 +97,7 @@ export default function MainPage() {
           transition={{ delay: 0.3, duration: 1.0 }}
           className="text-4xl font-bold text-gray-800 mb-4 w-full"
         >
-          <div className="border border-black h-[calc(100vh-240px)] py-12 px-8 flex items-start overflow-y-auto">
+          <div className="border border-black h-[85vh] py-12 px-8 flex items-start overflow-y-auto">
             {" "}
             <div
               className={`font-medium leading-relaxed ${
@@ -105,38 +111,85 @@ export default function MainPage() {
                   <ReactMarkdown>{aiResponse}</ReactMarkdown>
                 </div>
               ) : (
-                <div className="text-black">Hi, Samuel Choi 😁</div>
+                <div className="text-black">
+                  <div className="text-5xl font-bold flex items-center justify-center gap-24">
+                    {/* <Image
+                      src="https://cdn.shopify.com/s/files/1/2185/2813/files/w54212r_00_b2_s1_a1_m18_1500x.jpg?v=1751452461"
+                      alt="logo"
+                      width={350}
+                      height={100}
+                      className="rounded-lg"
+                    /> */}
+                    <Image
+                      src="https://cdn.shopify.com/s/files/1/2185/2813/files/A0590U_00000_b2_s1_a3_m143_750x.jpg?v=1752603195"
+                      alt="logo"
+                      width={350}
+                      height={100}
+                      className="rounded-lg"
+                    />
+                    <Image
+                      src="https://cdn.shopify.com/s/files/1/2185/2813/files/W51298R_0001_b1_s1_a1_1_m224_750x.jpg?v=1748462924"
+                      alt="logo"
+                      width={450}
+                      height={100}
+                      className="rounded-lg"
+                    />
+                    <div className="flex flex-col justify-start gap-12 h-[50vh]">
+                      {/* <svg
+                        className="alo-logo-mobile mx-auto"
+                        xmlns="http://www.w3.org/2000/svg"
+                        width="53"
+                        height="36"
+                      >
+                        <path d="M16.975 14.858h4.291v20.413h-4.291v-1.434A10.386 10.386 0 0 1 10.633 36C4.77 36 0 31.095 0 25.065S4.77 14.13 10.634 14.13c2.374 0 4.57.805 6.34 2.163zm0 10.212c0-3.598-2.845-6.526-6.342-6.526-3.497 0-6.341 2.928-6.341 6.526 0 3.6 2.844 6.527 6.342 6.527 3.496 0 6.34-2.928 6.34-6.527zM28.81 35.272h-4.29V0h4.291zm2.423-10.207c0-6.03 4.77-10.935 10.632-10.935 5.864 0 10.634 4.905 10.634 10.935S47.73 36 41.867 36c-5.864 0-10.633-4.905-10.633-10.935zm4.291.005c0 3.599 2.845 6.526 6.341 6.526 3.498 0 6.342-2.927 6.342-6.526 0-3.599-2.844-6.526-6.342-6.526-3.496 0-6.34 2.927-6.34 6.526z"></path>
+                        <desc>Brand Name: Alo Yoga</desc>
+                      </svg> */}
+
+                      <div className="text-black text-5xl">
+                        7/8 High-Waist Airbrush Legging
+                      </div>
+                      <div className="text-gray-800 text-3xl text-center">
+                        $129.00
+                      </div>
+                      <div className="text-black text-3xl">
+                        {[
+                          "Small",
+                          "Medium",
+                          "Large",
+                          "X-Large",
+                          "XX-Large",
+                        ].map((size, index) => (
+                          <span
+                            key={index}
+                            className="inline-block border border-black rounded-full px-4 py-1 mx-2 hover:bg-pink-100 cursor-pointer"
+                          >
+                            {size}
+                          </span>
+                        ))}
+                      </div>
+                      <div className="text-gray-800 text-lg text-left">
+                        <details className="group">
+                          <summary className="cursor-pointer font-semibold">
+                            Reviews
+                          </summary>
+                          <div className="mt-2 text-black">
+                            The 7/8 High-Waist Airbrush Legging — all the
+                            smoothing, sculpting benefits of the full-length
+                            version, in a perfectly cropped package. So good for
+                            studio & all-day cool for street, this look features
+                            flat-locked seaming for comfort and functionality,
+                            no side seams, and an on-trend high waist.
+                          </div>
+                        </details>
+                      </div>
+                    </div>
+                  </div>
+                </div>
               )}
             </div>
           </div>
         </motion.h1>
-        <motion.h1
-          initial={{ opacity: 0, y: 50 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.6, duration: 1.0 }}
-          className="w-full relative"
-        >
-          <div className="relative">
-            <textarea
-              ref={textareaRef}
-              value={message}
-              onChange={(e) => setMessage(e.target.value)}
-              onKeyPress={handleKeyPress}
-              placeholder="Start your deductions."
-              className="w-[50vw] resize-none border-none outline-none bg-pink-50 px-4 py-4 rounded-lg text-black"
-              rows={1}
-              style={{ minHeight: "100px", maxHeight: "120px" }}
-              onInput={adjustHeight}
-            />
-            <button
-              onClick={sendMessage}
-              disabled={isLoading}
-              className="absolute bottom-2 right-2 bg-blue-500 text-white rounded-full px-3 py-1 text-sm hover:bg-blue-600 disabled:opacity-50"
-            >
-              {isLoading ? "Sending..." : "Send"}
-            </button>
-          </div>
-        </motion.h1>
+
         {/* <motion.button
           initial={{ opacity: 0, y: 0 }}
           animate={{ opacity: 1, y: 0 }}
@@ -156,7 +209,7 @@ export default function MainPage() {
 
       {/* Footer */}
       <footer className="w-full py-4 text-center text-xs text-gray-500">
-        © {new Date().getFullYear()} TaxFinder. All rights reserved by Samuel.
+        © {new Date().getFullYear()} SILOAM. All rights reserved by Samuel.
       </footer>
     </motion.div>
   );

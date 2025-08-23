@@ -39,7 +39,7 @@ export default function Landing() {
           />
         </button>
         <nav className="hidden sm:flex space-x-6 text-sm">
-          <a href="#features" className="hover:text-blue-600 transition-colors">
+          {/* <a href="#features" className="hover:text-blue-600 transition-colors">
             Features
           </a>
           <a href="#about" className="hover:text-blue-600 transition-colors">
@@ -47,7 +47,7 @@ export default function Landing() {
           </a>
           <a href="#contact" className="hover:text-blue-600 transition-colors">
             Contact
-          </a>
+          </a> */}
         </nav>
       </header>
 
@@ -67,7 +67,7 @@ export default function Landing() {
           transition={{ duration: 1.0, delay: 0.6 }}
           className="font-bold text-[200px] text-red-500"
         >
-          <span className="text-pink-600">With Voice</span>
+          <span className="text-pink-600">limitless</span>
         </motion.h1>
         <p className="mt-4 max-w-xl text-gray-600">
           No need to read and type. Just talk to us.
