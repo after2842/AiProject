@@ -1,311 +1,215 @@
 """
-OpenAI Agents SDK — VoicePipeline mic streaming (robust & instrumented)
+Realtime STT → GPT‑4o → TTS (no Agents SDK)
+-------------------------------------------------
+• Captures mic at 24 kHz mono PCM16 and streams to the **Realtime** WebSocket API.
+• Uses **server‑side VAD** (turn detection) so you don't need to press keys.
+• On each detected user turn, creates a model response with **text + audio modalities**.
+• Prints streamed text deltas and plays streamed **PCM16** audio as they arrive.
 
-What this does
---------------
-• Captures microphone audio with `sounddevice`.
-• Ensures audio fed to the SDK is **PCM16 mono at 24 kHz** (what the STT expects).
-• Streams audio chunks into `StreamedAudioInput`.
-• Runs a `VoicePipeline` with explicit **STT** and **TTS** models.
-• Prints lifecycle + audio event diagnostics and plays TTS audio.
-• Graceful shutdown on Ctrl+C, and sends an end-of-stream sentinel to the pipeline.
+Requirements
+------------
+python -m pip install websockets sounddevice numpy
 
-Why these choices
------------------
-• The SDK labels input as `pcm16` on the realtime STT websocket. So we must
-  deliver **np.int16** buffers (not float32) and at the expected sample rate.
-• We open the mic at 24kHz if possible; otherwise resample.
-• We add a tiny `on_start` greeting so you can immediately see events emit.
+Environment
+-----------
+Set your key:  export OPENAI_API_KEY=sk-...
 
-Run:
-  python -u voice_pipeline_stream.py
+Notes
+-----
+• We configure server VAD via a `session.update` message using `turn_detection: {type: "server_vad"}`.
+• Audio input/output format is **pcm16 @ 24000 Hz** to match model defaults.
+• This uses the Realtime WebSocket endpoint (part of the Responses API family) directly.
 """
 
-from __future__ import annotations
-
+import os
 import asyncio
 import json
-import logging
-import queue
+import base64
 import signal
-from dataclasses import dataclass
-from typing import Any, AsyncIterator
+import queue
+from typing import Optional
 
 import numpy as np
 import sounddevice as sd
+import websockets
 
-from agents import Agent, function_tool
-from agents.extensions.handoff_prompt import prompt_with_handoff_instructions
-from agents.voice import (
-    VoicePipeline,
-    SingleAgentVoiceWorkflow,
-    StreamedAudioInput,
-    VoicePipelineConfig,
-)
+API_KEY = os.getenv("OPENAI_API_KEY", "")
+MODEL   = os.getenv("OPENAI_REALTIME_MODEL", "gpt-4o-realtime-preview")
+WS_URL  = f"wss://api.openai.com/v1/realtime?model={MODEL}"
 
-# ------------------------ Logging ------------------------
-# Make the SDK chatty so you can see STT/TTS state transitions.
-logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
-logger = logging.getLogger("app")
-# You can uncomment these for deeper SDK logs:
-# logging.getLogger("agents.voice").setLevel(logging.DEBUG)
-# logging.getLogger("agents.voice.models.openai_stt").setLevel(logging.DEBUG)
+# ---- Audio constants ----
+SR        = 24_000                 # sample rate expected by realtime STT
+CHANNELS  = 1
+DTYPE     = "int16"
+BLOCKSIZE = int(SR * 0.02)         # 20 ms chunks → 480 samples
 
-# ------------------------ Tool ------------------------
+# ---- Simple PCM16 speaker ----
+class Speaker:
+    def __init__(self, samplerate: int = SR):
+        self._out = sd.OutputStream(samplerate=samplerate, channels=1, dtype=DTYPE)
+        self._out.start()
+        print("[speaker] ready")
 
-@function_tool
-def get_weather(city: str) -> str:
-    """Get the weather for a given city."""
-    import random
-    logger.info(f"[tool] get_weather({city!r})")
-    choices = ["sunny", "cloudy", "rainy", "snowy"]
-    return f"The weather in {city} is {random.choice(choices)}."
+    def play_pcm16(self, pcm_bytes: bytes):
+        if not pcm_bytes:
+            return
+        pcm = np.frombuffer(pcm_bytes, dtype=np.int16)
+        self._out.write(pcm)
 
-# ------------------------ Agents ------------------------
+    def close(self):
+        try:
+            self._out.stop(); self._out.close()
+        except Exception:
+            pass
 
-# korean_agent = Agent(
-#     name="Korean",
-#     handoff_description="A Korean speaking agent.",
-#     instructions=prompt_with_handoff_instructions(
-#         "You're speaking to a human, so be polite and concise. Speak in Korean.",
-#     ),
-#     model="gpt-4o-mini",
-#     tools=[get_weather],
-# )
-
-agent = Agent(
-    name="Assistant",
-    instructions=prompt_with_handoff_instructions(
-        "You're speaking to a human, so be polite and concise. "
-        "If the user speaks in Korean, handoff to the Korean agent.",
-    ),
-    model="gpt-4o-mini",
-    # handoffs=[korean_agent],
-    # tools=[get_weather],
-)
-
-# ------------------------ Workflow with a greeting ------------------------
-
-class HelloOnStartWorkflow(SingleAgentVoiceWorkflow):
-    async def on_start(self) -> AsyncIterator[str]:
-        # Optional: greet so we get immediate TTS events even before you speak.
-        yield "안녕하세요! I'm listening. Say something and I'll respond."
-
-# ------------------------ Audio capture helpers ------------------------
-
-TARGET_SR = 24_000  # VoicePipeline/STT expects 24 kHz
-CHANNELS = 1
-DTYPE = "int16"     # Feed PCM16 (STT session advertises `pcm16`)
-BLOCKSIZE = 2048
-
-
-def _linear_resample(x: np.ndarray, sr_from: int, sr_to: int) -> np.ndarray:
-    if sr_from == sr_to or x.size == 0:
-        return x
-    n_out = int(round(x.size * sr_to / sr_from))
-    xp = np.linspace(0.0, 1.0, num=x.size, endpoint=False, dtype=np.float32)
-    xq = np.linspace(0.0, 1.0, num=n_out, endpoint=False, dtype=np.float32)
-    return np.interp(xq, xp, x).astype(np.float32, copy=False)
-
-
-async def pump_mic_to_streamed_input(stream_in: StreamedAudioInput, stop_evt: asyncio.Event):
-    """Capture mic → send **PCM16 @ 24 kHz mono** chunks into the SDK.
-
-    We ensure dtype=int16. If the device cannot open at 24kHz, we resample.
-    """
-    q: "queue.Queue[np.ndarray]" = queue.Queue()
-
+# ---- Mic → async queue (PCM16 @ 24k) ----
+async def mic_producer(q: "queue.Queue[bytes]", stop_evt: asyncio.Event):
     def _cb(indata, frames, time, status):
         if status:
-            print("[mic][status]", status, flush=True)
-        q.put(indata.copy())  # shape: (frames, 1), dtype=int16
-
-    # Try opening the mic at 24 kHz; fall back to device default if needed.
-    try:
-        sr = TARGET_SR
-        stream = sd.InputStream(
-            samplerate=sr,
-            channels=CHANNELS,
-            dtype=DTYPE,
-            blocksize=BLOCKSIZE,
-            callback=_cb,
-        )
-        stream.start()
-        print(f"[mic] opened at {sr} Hz")
-    except Exception as e:
-        info = sd.query_devices(sd.default.device[0])
-        sr = int(info.get("default_samplerate", 48_000))
-        print(f"[mic] {TARGET_SR} Hz not supported, falling back to {sr} Hz ({e!r})")
-        stream = sd.InputStream(
-            samplerate=sr,
-            channels=CHANNELS,
-            dtype=DTYPE,
-            blocksize=BLOCKSIZE,
-            callback=_cb,
-        )
-        stream.start()
-
-    loop = asyncio.get_running_loop()
+            print("[mic][status]", status)
+        q.put(indata.copy().tobytes())  # raw PCM16 bytes
 
     try:
+        stream = sd.InputStream(samplerate=SR, channels=1, dtype=DTYPE, blocksize=BLOCKSIZE, callback=_cb)
+        stream.start()
+        print(f"[mic] opened @ {SR} Hz PCM16")
+        loop = asyncio.get_running_loop()
         while not stop_evt.is_set():
-            data_i16 = await loop.run_in_executor(None, q.get)  # (frames, 1) int16
-            # quick input meter (RMS in int16 units)
-            rms = float(np.sqrt(np.mean((data_i16.astype(np.float32)) ** 2)))
-            print(f"[mic] frames={len(data_i16):4d}  rms={rms:7.1f}", flush=True)
-
-            mono_i16 = data_i16.reshape(-1)  # flatten to 1-D
-
-            if sr != TARGET_SR:
-                # resample in float32, then dither/clip back to int16
-                f32 = mono_i16.astype(np.float32) / 32768.0
-                f32 = _linear_resample(f32, sr_from=sr, sr_to=TARGET_SR)
-                mono_i16 = np.clip(f32 * 32767.0, -32768, 32767).astype(np.int16)
-
-            # CRITICAL: send **int16** buffers; STT session labels them as pcm16
-            await stream_in.add_audio(mono_i16)
+            try:
+                # block in a thread so we don't busy-wait
+                chunk = await loop.run_in_executor(None, q.get)
+                # small sleep to batch 20ms frames smoothly
+                await asyncio.sleep(0)
+            except Exception:
+                break
     finally:
         try:
             stream.stop(); stream.close()
         except Exception:
             pass
-        print("[mic] stopped")
+        print("[mic] closed")
 
+# ---- WebSocket client ----
+async def run_session():
+    if not API_KEY:
+        raise RuntimeError("OPENAI_API_KEY not set")
 
-# ------------------------ Playback helper ------------------------
-
-class Speaker:
-    def __init__(self, samplerate=TARGET_SR, channels=CHANNELS, dtype=DTYPE):
-        self._out = sd.OutputStream(samplerate=samplerate, channels=channels, dtype=dtype)
-        self._out.start()
-        print("Speaker initialized")
-
-    def play(self, audio_np: np.ndarray):
-        """Accept int16 or float32 mono arrays; convert to int16 for playback if needed."""
-        if audio_np.dtype == np.float32:
-            pcm = np.clip(audio_np.squeeze() * 32767.0, -32768, 32767).astype(np.int16)
-        elif audio_np.dtype == np.int16:
-            pcm = audio_np
-        else:
-            raise TypeError(f"Unsupported dtype: {audio_np.dtype}")
-        self._out.write(pcm)
-
-    def close(self):
-        self._out.stop()
-        self._out.close()
-
-
-# ------------------------ Main ------------------------
-
-def _supports(obj, name):
-    return hasattr(obj, name) and callable(getattr(obj, name))
-
-
-async def main():
-    # VoicePipeline with explicit model names keeps behavior predictable.
-    config = VoicePipelineConfig()  # you can tweak stt_settings.turn_detection here if needed
-    pipeline = VoicePipeline(
-        workflow=HelloOnStartWorkflow(agent),
-        stt_model="gpt-4o-mini-transcribe",  # or "gpt-4o-transcribe"
-        tts_model="gpt-4o-mini-tts",        # or "tts-1", "tts-1-hd"
-        config=config,
-    )
-
-    # Create input stream (class has no ctor args today; we configure via how we feed it)
-    try:
-        streamed_input = StreamedAudioInput()
-    except TypeError:
-        streamed_input = StreamedAudioInput()  # fallback; class signature may evolve
-
-    stop_evt = asyncio.Event()
-    print("streamed input created")
-
-    # Start mic → streamed input producer task
-    mic_task = asyncio.create_task(pump_mic_to_streamed_input(streamed_input, stop_evt))
-    print("mic_task created")
-
-    print("[pipeline] starting")
-    result = await pipeline.run(streamed_input)
-
-    # Small probe: expect the first event soon (greeting or initial state)
-    async def expect_first_event(result, timeout=8):
-        agen = result.stream()
-        try:
-            evt = await asyncio.wait_for(agen.__anext__(), timeout)
-            print("[first evt]", getattr(evt, "type", type(evt)))
-        except asyncio.TimeoutError:
-            print("[diag] No events within 8s → check API key, model names, or input format.")
-            return False
-        return True
-
-    await expect_first_event(result)
-
-    # Stream back BOTH voice (to speakers) and text (to terminal)
+    # Prepare audio IO
     speaker = Speaker()
-    last_len = 0  # track how much text we've printed so far
+    stop_evt = asyncio.Event()
+    mic_q: "queue.Queue[bytes]" = queue.Queue(maxsize=64)
 
-    async def consume_events():
-        print("consume_events called")
-        nonlocal last_len
-        async for event in result.stream():
-            etype = getattr(event, "type", None)
-            print(f"[evt] {etype!r}", flush=True)
+    # Connect WS
+    async with websockets.connect(
+        WS_URL,
+        additional_headers=[
+            ("Authorization", f"Bearer {API_KEY}"),
+            ("OpenAI-Beta", "realtime=v1"),
+        ],
+        subprotocols=["realtime"],
+    ) as ws:
+        print("[ws] connected")
 
-            # If event has raw audio data, show its shape/dtype for sanity.
-            if hasattr(event, "data"):
+        # Configure session: server‑side VAD + input audio format
+        await ws.send(json.dumps({
+            "type": "session.update",
+            "session": {
+                "turn_detection": {"type": "server_vad"},
+                # "input_audio_format": "pcm16",
+                # "input_audio_sample_rate_hz": SR,
+            },
+        }))
+
+        # Start mic task that feeds audio to WS
+        async def mic_sender():
+            print("[mic] sender started")
+            loop = asyncio.get_running_loop()
+            while not stop_evt.is_set():
                 try:
-                    print(
-                        f"[evt.data] shape={getattr(event.data,'shape',None)} "
-                        f"dtype={getattr(event.data,'dtype',None)}",
-                        flush=True,
-                    )
+                    pcm = await loop.run_in_executor(None, mic_q.get)
                 except Exception:
-                    pass
+                    break
+                # Encode to base64 and send append event
+                b64 = base64.b64encode(pcm).decode("ascii")
+                await ws.send(json.dumps({
+                    "type": "input_audio_buffer.append",
+                    "audio": b64,
+                }))
+                # Yield to allow receiving
+                await asyncio.sleep(0)
 
-            if etype == "voice_stream_event_audio":
-                # event.data is an np.ndarray (int16 or float32)
-                speaker.play(event.data)
-            elif etype == "voice_stream_event_lifecycle":
-                ev = getattr(event, "event", "")
-                print(f"[lifecycle] {ev}", flush=True) 
-                if getattr(event, "event", "") == "turn_started":
-                    print("\n[assistant] (speaking...)")
-                if getattr(event, "event", "") == "turn_ended":
-                    new_text = result.total_output_text[last_len:]
-                    if new_text.strip():
-                        print(f"[assistant text] {new_text.strip()}")
-                    last_len = len(result.total_output_text)
-                if getattr(event, "event", "") == "session_ended":
-                    print("[pipeline] session ended")
+        # Auto‑create a response after server VAD ends the turn
+        # We do this when we see the buffer get committed.
+        async def maybe_create_response():
+            await ws.send(json.dumps({
+                "type": "response.create",
+                "response": {
+                    "modalities": ["text", "audio"],
+                    "instructions": "Be concise.",
+                    "audio": {"voice": "alloy", "format": "pcm16"},
+                },
+            }))
 
-    consumer_task = asyncio.create_task(consume_events())
+        # Receiver: handle streaming text + audio, and trigger response on VAD commit
+        async def receiver():
+            print("[ws] receiver started")
+            text_buf = ""
+            async for raw in ws:
+                try:
+                    msg = json.loads(raw)
+                except Exception:
+                    print("[ws] non‑JSON frame")
+                    continue
 
-    # Graceful shutdown on Ctrl+C
-    loop = asyncio.get_running_loop()
-    stop_future = loop.create_future()
-    for sig in (signal.SIGINT, signal.SIGTERM):
-        loop.add_signal_handler(sig, stop_future.set_result, None)
+                t = msg.get("type")
+                if t == "response.output_text.delta":
+                    delta = msg.get("delta", "")
+                    text_buf += delta
+                    print(delta, end="", flush=True)
+                elif t == "response.output_text.done":
+                    print()  # newline after final text
+                elif t == "response.audio.delta":
+                    # base64 PCM16 chunk
+                    b64 = msg.get("delta", "")
+                    speaker.play_pcm16(base64.b64decode(b64))
+                elif t == "response.completed":
+                    text_buf = ""
+                elif t == "input_audio_buffer.committed":
+                    # Server VAD decided a turn ended → ask for a response
+                    await maybe_create_response()
+                elif t == "error":
+                    print("\n[ws][error]", msg)
+                # else: you can log other events for debugging
 
-    await stop_future
-    stop_evt.set()
+        # Task orchestration
+        mic_task = asyncio.create_task(mic_producer(mic_q, stop_evt))
+        send_task = asyncio.create_task(mic_sender())
+        recv_task = asyncio.create_task(receiver())
 
-    # Signal end-of-stream to STT (the SDK looks for a None buffer)
-    try:
-        streamed_input.queue.put_nowait(None)  # type: ignore[arg-type]
-    except Exception:
-        pass
+        # Graceful shutdown on Ctrl+C
+        loop = asyncio.get_running_loop()
+        stop_fut = loop.create_future()
+        for sig in (signal.SIGINT, signal.SIGTERM):
+            loop.add_signal_handler(sig, stop_fut.set_result, None)
 
-    # Let everything wind down
-    await asyncio.sleep(0.2)
-    consumer_task.cancel()
-    mic_task.cancel()
-    speaker.close()
-    print("[main] done")
+        await stop_fut
+        stop_evt.set()
 
+        # Finalize input on server (optional: commit any trailing audio)
+        try:
+            await ws.send(json.dumps({"type": "input_audio_buffer.commit"}))
+        except Exception:
+            pass
+
+        # Allow tasks to wind down
+        await asyncio.sleep(0.2)
+        for t in (mic_task, send_task, recv_task):
+            t.cancel()
+        speaker.close()
+        print("[ws] closed")
 
 if __name__ == "__main__":
-    # Sanity check: make sure the API key is present
-    import os
-    if not os.environ.get("OPENAI_API_KEY"):
-        print("[warn] OPENAI_API_KEY is not set in environment. The STT/TTS connection will fail.")
-    asyncio.run(main())
+    try:
+        asyncio.run(run_session())
+    except KeyboardInterrupt:
+        pass
