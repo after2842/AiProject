@@ -12,7 +12,7 @@ from textual.reactive import reactive
 from textual.widgets import Button, RichLog, Static
 from typing_extensions import override
 
-from agents.voice import StreamedAudioInput, VoicePipeline
+from agents.voice import StreamedAudioInput, VoicePipeline, VoicePipelineConfig, STTModelSettings
 
 # Import MyWorkflow class - handle both module and package use cases
 if TYPE_CHECKING:
@@ -56,7 +56,19 @@ class AudioStatusIndicator(Static):
             else "⚪ Press K to start recording (Q to quit)"
         )
         return status
-
+cfg = VoicePipelineConfig(
+    stt_settings=STTModelSettings(
+        # Enable server-side VAD (turn detection) with a reasonable threshold.
+        turn_detection={
+            "type": "server_vad",
+            "threshold": 0.5,            # typical 0.3–0.8
+            # Optional knobs supported by the Realtime API:
+            "prefix_padding_ms": 300,     # keep this much audio before speech start
+            "silence_duration_ms": 200,   # how long of silence ends a turn
+            # "idle_timeout_ms": 10000,   # end a turn if no new audio for N ms
+        },
+    )
+)
 
 class RealtimeApp(App[None]):
     CSS = """
@@ -127,7 +139,10 @@ class RealtimeApp(App[None]):
         self.should_send_audio = asyncio.Event()
         self.connected = asyncio.Event()
         self.pipeline = VoicePipeline(
-            workflow=MyWorkflow(secret_word="dog", on_start=self._on_transcription)
+            workflow=MyWorkflow(secret_word="dog", on_start=self._on_transcription),
+            stt_model="gpt-4o-transcribe",
+            tts_model="gpt-4o-mini-tts",
+            config=cfg
         )
         self._audio_input = StreamedAudioInput()
         self.audio_player = sd.OutputStream(
@@ -152,11 +167,16 @@ class RealtimeApp(App[None]):
 
     async def on_mount(self) -> None:
         self.run_worker(self.start_voice_pipeline())
+        #await asyncio.sleep(2) 
         self.run_worker(self.send_mic_audio())
 
     async def start_voice_pipeline(self) -> None:
         try:
             self.audio_player.start()
+            bottom_pane = self.query_one("#bottom-pane", RichLog)
+            
+            bottom_pane.write(f"STT model: {self.pipeline._stt_model_name}")
+
             self.result = await self.pipeline.run(self._audio_input)
 
             async for event in self.result.stream():
