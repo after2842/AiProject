@@ -3,7 +3,6 @@ import asyncio
 import base64
 import json
 import sys
-
 import sounddevice as sd
 import websockets
 from openai import OpenAI
@@ -17,14 +16,16 @@ URL = "wss://api.openai.com/v1/realtime?intent=transcription"
 API_KEY = os.getenv("OPENAI_API_KEY")
 if not API_KEY:
     raise SystemExit("Set OPENAI_API_KEY first")
+
 client = OpenAI(api_key=API_KEY)
 client_async = AsyncOpenAI(api_key=API_KEY)
+
 HEADERS = { "Authorization": f"Bearer {API_KEY}" }  # minimal header only
 
 SAMPLE_RATE = 24_000
 CHANNELS = 1
 DTYPE = "int16"
-CHUNK_MS = 40  # ~40ms
+CHUNK_MS = 40  # can be modified
 
 # Incoming event types (transcription intent)
 EV_DELTA = "conversation.item.input_audio_transcription.delta"
