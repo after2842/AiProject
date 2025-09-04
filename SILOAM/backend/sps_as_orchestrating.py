@@ -20,7 +20,7 @@ if not API_KEY:
 client = OpenAI(api_key=API_KEY)
 client_async = AsyncOpenAI(api_key=API_KEY)
 
-HEADERS = { "Authorization": f"Bearer {API_KEY}" }  # minimal header only
+HEADERS = { "Authorization": f"Bearer {API_KEY}" } 
 
 SAMPLE_RATE = 24_000
 CHANNELS = 1
