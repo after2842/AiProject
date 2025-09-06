@@ -29,7 +29,7 @@ class RouteDecision(BaseModel):
     )
     confidence: confloat(ge=0, le=1) =  Field(description="Confidence 0..1 for the category decision")
     skip_opensearch_query: bool = Field(description="Skip the opensearch query if user question can be answered from the previous search results.")
-    opensearch_prompt: str = Field(description="The natural language prompt for the opensearch query agent.")
+    opensearch_keywords: list[str] = Field(description="The keywords for the opensearch query agent. Must include the product type. Leggings, Yoga Pants, Shorts, Goosedown etc.")
     rationale_for_category: str = Field(description="Short why for debugging")
     rationale_for_skip_opensearch_query: str = Field(description="Short why for debugging")
     rationale_for_opensearch_prompt: str = Field(description="Short why for debugging")
