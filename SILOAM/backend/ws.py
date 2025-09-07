@@ -120,13 +120,14 @@ async def _pump_client_to_openai(client_ws: WebSocket,
 
 
 async def stream_tts(text: str, client_ws: WebSocket):
+    await client_ws.send_text(json.dumps({"type": "tts.start"}))
     try:
         async with AsyncOpenAI(api_key=OPENAI_API_KEY).audio.speech.with_streaming_response.create(
             model="gpt-4o-mini-tts", voice="coral", input=text, response_format="pcm"
         ) as resp:
             print("resp: ", resp)
             async for chunk in resp.iter_bytes():
-                print(f"Sending audio chunk: {len(chunk)} bytes")
+                #print(f"Sending audio chunk: {len(chunk)} bytes")
                 await client_ws.send_bytes(chunk)
     finally:
         await client_ws.send_text(json.dumps({"type": "tts.end"}))
@@ -174,53 +175,54 @@ async def _pump_openai_to_client(openai_ws: websockets.WebSocketClientProtocol,
       - session.created / error (useful for debugging)
     You can also just forward *all* JSON you receive if you prefer.
     """
-    async for raw in openai_ws:
-        # OpenAI WS messages are JSON strings (and occasionally binary if you request TTS/audio)
-        if isinstance(raw, (bytes, bytearray)):
-            print("raw❤️", raw)
-            # For transcription-only sessions we don't expect binary from OpenAI;
-            # ignore or route elsewhere if you enable audio out.
+    while True:
+        async for raw in openai_ws:
+            # OpenAI WS messages are JSON strings (and occasionally binary if you request TTS/audio)
+            if isinstance(raw, (bytes, bytearray)):
+                print("raw❤️", raw)
+                # For transcription-only sessions we don't expect binary from OpenAI;
+                # ignore or route elsewhere if you enable audio out.
 
-            #continue
+                #continue
 
-        try:
- 
-            event = json.loads(raw)
-            type = event.get("type")
-            if type == "conversation.item.input_audio_transcription.delta":
-                delta = event.get("delta", "")
-                if delta:
-                    #print("delta: ",delta, end="", flush=True)  # live partials
-                    print(f"delta: {delta}\n")
-            elif type == "conversation.item.input_audio_transcription.completed":
-                print(f"User said: {event.get('transcript', 'No transcript')}")
-                answer = await get_route_decision(event.get('transcript', 'No transcript'), conv_id)
-                print("Model answered: ", answer)
-                await stream_tts(answer, client_ws)
-                #await client_ws.send_text(json.dumps(route_decision))
-            else:
+            try:
+    
+                event = json.loads(raw)
+                type = event.get("type")
+                if type == "conversation.item.input_audio_transcription.delta":
+                    delta = event.get("delta", "")
+                    if delta:
+                        #print("delta: ",delta, end="", flush=True)  # live partials
+                        print(f"delta: {delta}\n")
+                elif type == "conversation.item.input_audio_transcription.completed":
+                    print(f"User said: {event.get('transcript', 'No transcript')}")
+                    answer = await get_route_decision(event.get('transcript', 'No transcript'), conv_id)
+                    print("Model answered: ", answer)
+                    await stream_tts(answer, client_ws)
+                    #await client_ws.send_text(json.dumps(route_decision))
+                else:
+                    continue
+                    # print("unknown event", event)
+            except Exception as e:
+                # debug: forward opaque message
+                print("error", e)
+                await client_ws.send_text(raw)
                 continue
-                # print("unknown event", event)
-        except Exception as e:
-            # debug: forward opaque message
-            print("error", e)
-            await client_ws.send_text(raw)
-            continue
 
-        etype = event.get("type", "")
+            etype = event.get("type", "")
 
-        # Pass through useful events
-        if etype in (
-            "session.created",
-            "error",
-            "conversation.item.input_audio_transcription.delta",
-            "conversation.item.input_audio_transcription.completed",
-        ):
-            await client_ws.send_text(json.dumps(event))
-            continue
+            # Pass through useful events
+            if etype in (
+                "session.created",
+                "error",
+                "conversation.item.input_audio_transcription.delta",
+                "conversation.item.input_audio_transcription.completed",
+            ):
+                await client_ws.send_text(json.dumps(event))
+                continue
 
-        # Optional: forward everything for debugging
-        # await client_ws.send_text(json.dumps(ev))
+            # Optional: forward everything for debugging
+            # await client_ws.send_text(json.dumps(ev))
 
 @app.websocket("/ws")
 async def ws_bridge(client_ws: WebSocket):
@@ -249,14 +251,17 @@ async def ws_bridge(client_ws: WebSocket):
     from_oai = asyncio.create_task(_pump_openai_to_client(openai_ws, client_ws, conv_id))
 
     try:
-        done, pending = await asyncio.wait(
-            {to_oai, from_oai}, return_when=asyncio.FIRST_EXCEPTION
-        )
-        # surface exceptions if any
-        for t in done:
-            e = t.exception()
-            if e:
-                raise e
+        await asyncio.gather(to_oai, from_oai)
+
+
+        # done, pending = await asyncio.wait(
+        #     {to_oai, from_oai}, return_when=asyncio.ALL_COMPLETED
+        # )
+        # # surface exceptions if any
+        # for t in done:
+        #     e = t.exception()
+        #     if e:
+        #         raise e
     except WebSocketDisconnect:
         pass
     except Exception as e:
