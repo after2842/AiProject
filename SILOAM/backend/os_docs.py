@@ -24,7 +24,7 @@ from opensearchpy import OpenSearch, RequestsHttpConnection, helpers
 REGION   = os.getenv("AWS_REGION", "us-west-2")
 #TABLE    = os.getenv("DDB_TABLE", "catalog_tentree")
 OS_HOST  = "search-siloam-v01-qoptmnyzfw527t36u56xvzhsje.us-west-2.es.amazonaws.com"      
-OS_INDEX = os.getenv("OS_INDEX", "catalog_search_v01")
+OS_INDEX = os.getenv("OS_INDEX", "catalog_search_v01_09072025")
 
 # ---------- OpenSearch client ----------
 def make_os_client():
@@ -37,6 +37,9 @@ def make_os_client():
         use_ssl=True,
         verify_certs=True,
         connection_class=RequestsHttpConnection,
+        max_retries=3,
+        retry_on_timeout=True,
+        timeout=120,
     )
 
 # ---------- Optional: create index with minimal mapping ----------
@@ -49,36 +52,40 @@ def ensure_index(os_client: OpenSearch, index: str):
         },
         "mappings": {
             "properties": {
+
                 # Product-level fields (denormalized)
                 "merchant":      {"type": "keyword"},
                 "product_id":    {"type": "keyword"},
                 "product_title": {"type": "text"},
-                "handle":        {"type": "keyword"},
-                "vendor":        {"type": "keyword"},
-                "product_type":  {"type": "keyword"},
-                "tags":          {"type": "keyword"},
+                #"handle":        {"type": "keyword"},
+                #"vendor":        {"type": "keyword"},
+                #"product_type":  {"type": "keyword"},
+                #"tags":          {"type": "keyword"},
+                "product_age_group": {"type": "keyword"},
+                "product_gender": {"type": "keyword"},
+                "product_category": {"type": "keyword"},
                 "featuredImage": {"type": "keyword"},
                 "product_description":   {"type": "text"},
-                "descriptionHtml": {"type": "text"},
+                "product_description_SILOAM": {"type": "text"},
                 
                 # Variant-level fields
                 "variant_id":    {"type": "keyword"},
                 "variant_title": {"type": "text"},
-                "variant_description": {"type": "text"},
-                "options":       {"type": "object", "dynamic": True},
+                #"variant_description": {"type": "text"},
+                #"options":       {"type": "object", "dynamic": True},
                 "price":         {"type": "double"},
                 "available":     {"type": "boolean"},
                 "image_url":     {"type": "keyword"},
                 
                 # Sibling awareness fields
-                "num_other_variants": {"type": "integer"},
+                #"num_other_variants": {"type": "integer"},
                 
                 # Timestamp
                 "updated_at":    {"type": "date", "format": "epoch_second"}
             }
         }
     }
-    os_client.indices.create(index=index, body=mapping)
+    os_client.indices.create(index=index, body=mapping, ignore=400, request_timeout=120)
     print(f"Created index: {index}")
 
 # ---------- Dynamo helpers ----------
@@ -88,7 +95,7 @@ def ddb_scan_products(ddb) -> Dict[str, Dict[str, Any]]:
     """
     Build a lookup: product_gid -> product summary fields used for denormalization.
     """
-    proj = "#p,SK,entity,shop_domain,product_gid,handle,title,vendor,productType,tags,priceMin,priceMax,description,descriptionHtml,featuredImage,images,selectedOptions,seo"
+    proj = "#p,SK,entity,shop_domain,product_gid,handle,title,vendor,productType,product_category,gender,age_group,tags,priceMin,priceMax,description,descriptionHtml,featuredImage,images,selectedOptions,seo"
     ean  = {"#p":"PK"}
     out: Dict[str, Dict[str, Any]] = {}
     eks = None
@@ -112,6 +119,10 @@ def ddb_scan_products(ddb) -> Dict[str, Dict[str, Any]]:
                     "tags": it.get("tags"),
                     "product_title": it.get("title"),
                     "vendor": it.get("vendor"),
+                    "product_category": it.get("product_category"),
+                    "gender": it.get("gender"),
+                    "age_group": it.get("age_group"),
+                    "description_SILOAM": it.get("description_SILOAM"),
                 }
         eks = resp.get("LastEvaluatedKey")
         if not eks:
@@ -224,37 +235,39 @@ def build_docs(products: Dict[str, Dict[str, Any]],
                     "merchant":      prod.get("shop_domain") or "",
                     "product_id":    product_id,
                     "product_title": prod.get("product_title") or "",
-                    "handle":        prod.get("handle") or "",
-                    "vendor":        prod.get("vendor") or "",
-                    "product_type_level_1":  prod.get("productType") or "",
-                    "product_type_level_2":  prod.get("productType") or "",
-                    "product_type_level_3":  prod.get("productType") or "",
-                    "product_type_level_4":  prod.get("productType") or "",
-                    "tags":          prod.get("tags") or [],
+                    "product_age_group": prod.get("age_group") or "",
+                    "product_gender": prod.get("gender") or "",
+                    "product_category": prod.get("product_category") or "",
+                    #"handle":        prod.get("handle") or "",
+                    #"vendor":        prod.get("vendor") or "",
+                    #"tags":          prod.get("tags") or [],
                     "featuredImage": _extract_image_url(prod.get("featuredImage")),
                     "product_description":   prod.get("description") or "",
-                    "descriptionHtml": prod.get("descriptionHtml") or "",
+                    "product_description_SILOAM": prod.get("description_SILOAM") or "",
 
                     # Variant-level
                     "variant_id":    variant_id,
                     "variant_title": v.get("title") or "",
-                    "variant_description": v.get("description") or "",
-                    "options":       v.get("selectedOptions") or {},
+                    #"variant_description": v.get("description") or "",
+                    #"options":       v.get("selectedOptions") or {},
                     "price":         _to_float(v.get("price")) or "",
                     "available":     bool(v.get("availableForSale", False)),
                     "image_url":     _extract_image_url(v.get("image")),
 
                     # New: sibling awareness
-                    "num_other_variants":           other_variants,
+                    #"num_other_variants":           other_variants,
 
 
-                    "updated_at":   now
+                    "updated_at": now
                 }
             }
             yield doc
 
 def main():
-    brand_list = ["goodfair", "outrage", "tentree", "allbirds","adored","aloyoga", "gruntstyle","knix", "misslola", "outdoorvoices", "pangaia", "rachelriley"]
+    brand_list = ["goodfair", "outrage", "tentree","aloyoga", "gruntstyle","knix", "misslola", "outdoorvoices", "pangaia", "rachelriley"] #, "allbirds","adored"
+    os_client = make_os_client()
+    ensure_index(os_client, OS_INDEX)
+
     for brand in brand_list:
         TABLE = os.getenv("DDB_TABLE", f"catalog_{brand}")
         ddb = boto3.resource("dynamodb", region_name=REGION).Table(TABLE)
@@ -267,8 +280,6 @@ def main():
         total_variants = sum(len(vs) for vs in grouped.values())
         print(f"Products with variants: {len(grouped)} | Variants: {total_variants}")
 
-        os_client = make_os_client()
-        ensure_index(os_client, OS_INDEX)
 
         print("Indexing variant docs to OpenSearch…")
         actions = build_docs(products, grouped)
