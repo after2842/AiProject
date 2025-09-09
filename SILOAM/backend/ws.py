@@ -422,7 +422,7 @@ LOW_LEVEL_CATEGORY_LIST = list(LOW_LEVEL_CATEGORY_MAP.keys())
 HIGH_LEVEL_CATEGORY_LIST = list(HIGH_LEVEL_CATEGORY_MAP.keys())
 async def get_route_decision(user_input: str, conv_id: str):
 
-    response = client.responses.parse(
+    response = client.responses.parse( #maybe wecan offload some works to other model? -> pick product cat/gend/age ... fast -> if too broad -> ask question OR execute search
         model="gpt-4.1-mini-2025-04-14",
         input=[
             {"role": "system",
@@ -461,14 +461,17 @@ def execute_opensearch(categories: List[str], user_input: str):
         "query": {
             "bool": {
                 "must": [
-                    {"multi_match": {"query": f"{user_input}", "fields": ["product_title^3","variant_title^2", "product_description", "product_description_SILOAM"]}}
+                    {"multi_match": {"query": f"{user_input}", "fields": ["product_title^5, product_description^2, product_description_SILOAM^2"]}}
                 ],
                 "filter": [
-                    {"terms": {"product_category": categories}}
+                    {"terms": {"product_category": categories}},
+                    {"term":{"product_gender": user_input}},
+                    {"term":{"product_age_group": user_input}}
                 ]
             }
         },
         "sort": [{"price":"asc"}],
+        "size": 10,
     }
     print("q: ", q)
     os_response = os_client.search(index="catalog_search_v01_09072025", body=q)
