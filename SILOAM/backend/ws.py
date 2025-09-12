@@ -456,7 +456,7 @@ class ProductCategoryDecision(BaseModel):
     # confidence: confloat(ge=0, le=1) = Field(description="Confidence 0..1 for the broad decision")
 
 def execute_opensearch(categories: List[str], user_input: str):
-    # Generate embedding for semantic search
+    # Generate embedding
     try:
         embedding_response = client.embeddings.create(
             model="text-embedding-3-small",
@@ -476,7 +476,6 @@ def execute_opensearch(categories: List[str], user_input: str):
             "query": user_input,
             "fields": [
                 "product_title^3",           # Boost product title
-                "variant_title^2",           # Boost variant title  
                 "product_description^1.5",   # Moderate boost for descriptions
                 "product_description_SILOAM^2" # Higher boost for SILOAM descriptions
             ],
@@ -521,7 +520,7 @@ def execute_opensearch(categories: List[str], user_input: str):
             "bool": {
                 "should": query_parts,  # Any of these can match
                 "filter": [
-                    {"terms": {"product_category": categories}},  # Required category match
+                    {"terms": {"product_category": categories}},  # Required category match 
                     {"term": {"available": True}}  # Only available products
                 ],
                 "minimum_should_match": 1  # At least one should clause must match
