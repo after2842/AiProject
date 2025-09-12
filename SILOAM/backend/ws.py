@@ -456,21 +456,81 @@ class ProductCategoryDecision(BaseModel):
     # confidence: confloat(ge=0, le=1) = Field(description="Confidence 0..1 for the broad decision")
 
 def execute_opensearch(categories: List[str], user_input: str):
+    # Generate embedding for semantic search
+    try:
+        embedding_response = client.embeddings.create(
+            model="text-embedding-3-small",
+            input=user_input
+        )
+        query_embedding = embedding_response.data[0].embedding
+    except Exception as e:
+        print(f"Error generating embedding: {e}")
+        query_embedding = []
+
+    # Build hybrid search query
+    query_parts = []
+    
+    # 1. Text-based search (keyword matching)
+    text_query = {
+        "multi_match": {
+            "query": user_input,
+            "fields": [
+                "product_title^3",           # Boost product title
+                "variant_title^2",           # Boost variant title  
+                "product_description^1.5",   # Moderate boost for descriptions
+                "product_description_SILOAM^2" # Higher boost for SILOAM descriptions
+            ],
+            "type": "best_fields",           # Use best matching field
+            "fuzziness": "AUTO",             # Handle typos
+            "operator": "or"                 # More forgiving matching
+        }
+    }
+    query_parts.append(text_query)
+    
+    # 2. Semantic search (if embedding available)
+    if query_embedding:
+        semantic_queries = []
+        
+        # Search in both description embeddings
+        if len(query_embedding) == 1536:  # Validate embedding dimensions
+            semantic_queries.extend([
+                {
+                    "script_score": {
+                        "query": {"match_all": {}},
+                        "script": {
+                            "source": "cosineSimilarity(params.query_vector, 'product_description_embed') + 1.0",
+                            "params": {"query_vector": query_embedding}
+                        }
+                    }
+                },
+                {
+                    "script_score": {
+                        "query": {"match_all": {}},
+                        "script": {
+                            "source": "cosineSimilarity(params.query_vector, 'product_description_SILOAM_embed') + 1.0", 
+                            "params": {"query_vector": query_embedding}
+                        }
+                    }
+                }
+            ])
+        
+        query_parts.extend(semantic_queries)
 
     q = {
         "query": {
             "bool": {
-                "must": [
-                    {"multi_match": {"query": f"{user_input}", "fields": ["product_title^5, product_description^2, product_description_SILOAM^2"]}}
-                ],
+                "should": query_parts,  # Any of these can match
                 "filter": [
-                    {"terms": {"product_category": categories}},
-                    {"term":{"product_gender": user_input}},
-                    {"term":{"product_age_group": user_input}}
-                ]
+                    {"terms": {"product_category": categories}},  # Required category match
+                    {"term": {"available": True}}  # Only available products
+                ],
+                "minimum_should_match": 1  # At least one should clause must match
             }
         },
-        "sort": [{"price":"asc"}],
+        "sort": [
+            {"_score": {"order": "desc"}},  # Relevance first
+            {"price": {"order": "asc"}}     # Then by price
+        ],
         "size": 10,
     }
     print("q: ", q)
