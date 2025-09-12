@@ -20,11 +20,15 @@ from typing import Dict, List, Any, Tuple
 import boto3
 from requests_aws4auth import AWS4Auth
 from opensearchpy import OpenSearch, RequestsHttpConnection, helpers
+from openai import OpenAI
 
 REGION   = os.getenv("AWS_REGION", "us-west-2")
 #TABLE    = os.getenv("DDB_TABLE", "catalog_tentree")
 OS_HOST  = "search-siloam-v01-qoptmnyzfw527t36u56xvzhsje.us-west-2.es.amazonaws.com"      
 OS_INDEX = os.getenv("OS_INDEX", "catalog_search_v01_09072025")
+
+# OpenAI client for embeddings
+openai_client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 # ---------- OpenSearch client ----------
 def make_os_client():
@@ -67,6 +71,8 @@ def ensure_index(os_client: OpenSearch, index: str):
                 "featuredImage": {"type": "keyword"},
                 "product_description":   {"type": "text"},
                 "product_description_SILOAM": {"type": "text"},
+                "product_description_embed": {"type": "dense_vector", "dims": 1536, "index": False},
+                "product_description_SILOAM_embed": {"type": "dense_vector", "dims": 1536, "index": False},
                 
                 # Variant-level fields
                 "variant_id":    {"type": "keyword"},
@@ -180,6 +186,21 @@ def _extract_image_url(image_data) -> str:
     except:
         return ""
 
+def _generate_embedding(text: str) -> List[float]:
+    """Generate embedding for text using OpenAI's text-embedding-3-small model"""
+    if not text or not text.strip():
+        return []
+    
+    try:
+        response = openai_client.embeddings.create(
+            model="text-embedding-3-small",
+            input=text.strip()
+        )
+        return response.data[0].embedding
+    except Exception as e:
+        print(f"Error generating embedding for text '{text[:50]}...': {e}")
+        return []
+
 def summarize_other_options(all_variants: List[Dict[str, Any]],
                             current_variant_id: str) -> int:
     """
@@ -220,6 +241,9 @@ def build_docs(products: Dict[str, Dict[str, Any]],
     Yield OpenSearch bulk actions for each variant doc.
     """
     now = int(time.time())
+    total_variants = sum(len(vs) for vs in grouped_variants.values())
+    processed = 0
+    
     for product_id, var_list in grouped_variants.items():
         prod = products.get(product_id, {})
         for v in var_list:
@@ -227,6 +251,13 @@ def build_docs(products: Dict[str, Dict[str, Any]],
             # Summaries across siblings:
             other_variants = summarize_other_options(var_list, variant_id)
 
+            # Generate embeddings for descriptions
+            product_desc = prod.get("description") or ""
+            product_desc_siloam = prod.get("description_SILOAM") or ""
+            
+            product_desc_embed = _generate_embedding(product_desc)
+            product_desc_siloam_embed = _generate_embedding(product_desc_siloam)
+            
             doc = {
                 "_index": OS_INDEX,
                 "_id": variant_id,
@@ -242,8 +273,10 @@ def build_docs(products: Dict[str, Dict[str, Any]],
                     #"vendor":        prod.get("vendor") or "",
                     #"tags":          prod.get("tags") or [],
                     "featuredImage": _extract_image_url(prod.get("featuredImage")),
-                    "product_description":   prod.get("description") or "",
-                    "product_description_SILOAM": prod.get("description_SILOAM") or "",
+                    "product_description":   product_desc,
+                    "product_description_SILOAM": product_desc_siloam,
+                    "product_description_embed": product_desc_embed,
+                    "product_description_SILOAM_embed": product_desc_siloam_embed,
 
                     # Variant-level
                     "variant_id":    variant_id,
@@ -261,6 +294,11 @@ def build_docs(products: Dict[str, Dict[str, Any]],
                     "updated_at": now
                 }
             }
+            
+            processed += 1
+            if processed % 100 == 0:
+                print(f"Processed {processed}/{total_variants} variants...")
+            
             yield doc
 
 def main():

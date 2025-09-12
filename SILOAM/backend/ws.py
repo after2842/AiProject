@@ -422,7 +422,7 @@ LOW_LEVEL_CATEGORY_LIST = list(LOW_LEVEL_CATEGORY_MAP.keys())
 HIGH_LEVEL_CATEGORY_LIST = list(HIGH_LEVEL_CATEGORY_MAP.keys())
 async def get_route_decision(user_input: str, conv_id: str):
 
-    response = client.responses.parse( #maybe wecan offload some works to other model? -> pick product cat/gend/age ... fast -> if too broad -> ask question OR execute search
+    response = client.responses.parse( #maybe we can offload some works to other model? -> pick product cat/gend/age ... fast -> if too broad -> ask question OR execute search
         model="gpt-4.1-mini-2025-04-14",
         input=[
             {"role": "system",
