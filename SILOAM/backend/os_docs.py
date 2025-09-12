@@ -321,7 +321,15 @@ def main():
 
         print("Indexing variant docs to OpenSearch…")
         actions = build_docs(products, grouped)
-        helpers.bulk(os_client, actions, chunk_size=1000, request_timeout=120)
+        helpers.bulk(
+            os_client, 
+            actions, 
+            chunk_size=50, 
+            request_timeout=120,
+            max_retries=3,
+            initial_backoff=2,
+            max_backoff=600
+        )
         print("Backfill complete.")
 
 if __name__ == "__main__":
