@@ -74,7 +74,7 @@ def parse_remap(val: str) -> Dict[str, str]:
 
 
 def iter_gid_objects(raw: str) -> Iterator[Tuple[str, Dict]]:
-    """Yield (gid, obj) from a concatenated string of `"gid"... {json} "gid"... {json}`."""
+    """Yield (gid, obj)from a concatenated string of `"gid"... {json} "gid"... {json}`."""
     i = 0
     n = len(raw)
     while True:
