@@ -523,7 +523,7 @@ def execute_opensearch(categories: List[str], user_input: str):
                     {"terms": {"product_category": categories}},  # Required category match 
                     {"term": {"available": True}}  # Only available products
                 ],
-                "minimum_should_match": 1  # Atleast one should clause must match
+                "minimum_should_match": 1  # Atleast one should clause must mat
             }
         },
         "sort": [
