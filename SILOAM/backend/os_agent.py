@@ -24,7 +24,7 @@ from agents.agent import StopAtTools  # for stop-on-tool behavior  # noqa: E402
 osquery_generator = OpenAI()
 
 class RouteDecision(BaseModel):
-    category: Literal["find_product", "add_to_cart", "support", "end_conversation", "other"] = Field(
+    category: Literal["find_product", "add_to_cart","support", "end_conversation", "other"] = Field(
         description="Pick the single best category for the user's request."
     )
     confidence: confloat(ge=0, le=1) =  Field(description="Confidence 0..1 for the category decision")
