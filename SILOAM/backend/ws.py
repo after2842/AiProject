@@ -503,6 +503,7 @@ def execute_opensearch(categories: List[str], user_input: str):
         if len(query_embedding) == 512:  # Validate embedding dimensions
             semantic_queries.extend([
                 {
+                    
                     "script_score": {
                         "query": {"match_all": {}},
                         "script": {
