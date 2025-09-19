@@ -15,10 +15,18 @@ from openai import AsyncOpenAI
 import boto3
 from requests_aws4auth import AWS4Auth
 from opensearchpy import OpenSearch, RequestsHttpConnection
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 # ---------- CONFIG ----------
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "").strip()
 if not OPENAI_API_KEY:
     raise SystemExit("Set OPENAI_API_KEY")
+
+OS_HOST = os.getenv("OS_HOST", "").strip()
+if not OS_HOST:
+    raise SystemExit("Set OS_HOST environment variable")
 
 OAI_URL = "wss://api.openai.com/v1/realtime?intent=transcription"
 
@@ -293,7 +301,7 @@ creds = session.get_credentials().get_frozen_credentials()
 auth = AWS4Auth(creds.access_key, creds.secret_key, "us-west-2", "es", session_token=creds.token)
 
 os_client = OpenSearch(
-    hosts=[{"host": os.getenv("OS_HOST"), "port": 443}],
+    hosts=[{"host": OS_HOST, "port": 443}],
     http_auth=auth,
     use_ssl=True,
     verify_certs=True,
@@ -447,7 +455,7 @@ async def get_route_decision(user_input: str, conv_id: str):
 
 class ProductCategoryDecision(BaseModel):
     high_level_category: Literal["TOPS", "BOTTOMS", "DRESSES_ONEPIECES", "OUTERWEAR", "ACTIVEWEAR", "UNDERWEAR_HOSIERY_SOCKS", "SLEEP_LOUNGE", "SWIMWEAR", "FOOTWEAR", "ACCESSORIES_JEWELRY", "BAGS_LUGGAGE", "SPECIALTY", "TRADITIONAL_CULTURAL"] = Field(
-        description="Pick the single best high level category for the user's request."
+        description="Pick the single best high level category for the user's request. "
     )
     low_level_category: List[Literal["TOPS_TSHIRT", "TOPS_LONGSLEEVE_TSHIRT", "TOPS_POLO", "TOPS_BUTTON_DOWN_SHIRT", "TOPS_DRESS_SHIRT", "TOPS_BLOUSE", "TOPS_TANK", "TOPS_CAMISOLE", "TOPS_BODYSUIT", "TOPS_SWEATSHIRT", "TOPS_HOODIE", "TOPS_SWEATER", "TOPS_CARDIGAN", "TOPS_TURTLENECK", "TOPS_TUNIC", "TOPS_CROP_TOP", "TOPS_VEST", "TOPS_JERSEY", "TOPS_RUGBY", "TOPS_PEPLUM", "TOPS_HENLEY", "TOPS_BASE_LAYER_TOP", "BOTTOMS_JEANS_SKINNY", "BOTTOMS_JEANS_STRAIGHT", "BOTTOMS_JEANS_RELAXED", "BOTTOMS_JEANS_BOOTCUT", "BOTTOMS_JEANS_WIDE", "BOTTOMS_CHINOS", "BOTTOMS_TROUSERS_DRESS", "BOTTOMS_CARGO_PANTS", "BOTTOMS_JOGGERS", "BOTTOMS_SWEATPANTS", "BOTTOMS_LEGGINGS", "BOTTOMS_YOGA_PANTS", "BOTTOMS_SHORTS_CASUAL", "BOTTOMS_SHORTS_ATHLETIC", "BOTTOMS_SHORTS_DRESS", "BOTTOMS_SKIRT_MINI", "BOTTOMS_SKIRT_MIDI", "BOTTOMS_SKIRT_MAXI", "BOTTOMS_SKIRT_PENCIL", "BOTTOMS_SKIRT_A_LINE", "BOTTOMS_OVERALLS", "BOTTOMS_SARONG", "DRESSES_CASUAL", "DRESSES_DAY", "DRESSES_COCKTAIL", "DRESSES_EVENING", "DRESSES_GOWN", "DRESSES_BODYCON", "DRESSES_SHIRT_DRESS", "DRESSES_WRAP", "DRESSES_SUN", "DRESSES_JUMPSUIT", "DRESSES_ROMPER", "DRESSES_SUIT_SET", "OUTERWEAR_DENIM_JACKET", "OUTERWEAR_LEATHER_JACKET", "OUTERWEAR_BOMBER_JACKET", "OUTERWEAR_WINDBREAKER", "OUTERWEAR_PUFFER_JACKET", "OUTERWEAR_TRENCH_COAT", "OUTERWEAR_WOOL_COAT", "OUTERWEAR_PEA_COAT", "OUTERWEAR_PARKA", "OUTERWEAR_RAINCOAT", "OUTERWEAR_BLAZER", "OUTERWEAR_VEST", "OUTERWEAR_CAPE_PONCHO", "OUTERWEAR_FLEECE", "OUTERWEAR_SHACKET", "ACTIVE_LEGGINGS", "ACTIVE_SPORTS_BRA", "ACTIVE_TRAINING_TOP", "ACTIVE_TRAINING_SHORTS", "ACTIVE_TRACK_PANTS", "ACTIVE_RUNNING_JACKET", "ACTIVE_RASH_GUARD", "ACTIVE_CYCLING_JERSEY", "ACTIVE_BASE_LAYER", "ACTIVE_TENNIS_GOLF_DRESS", "UNDERWEAR_BRA", "UNDERWEAR_BRALETTE", "UNDERWEAR_PANTIES_BRIEF", "UNDERWEAR_PANTIES_THONG", "UNDERWEAR_PANTIES_BIKINI", "UNDERWEAR_BOXERS", "UNDERWEAR_BOXER_BRIEFS", "UNDERWEAR_BRIEFS", "UNDERWEAR_LONG_JOHNS", "UNDERWEAR_THERMAL_TOP", "UNDERWEAR_UNDERSHIRT", "UNDERWEAR_SHAPEWEAR_TOP", "UNDERWEAR_SHAPEWEAR_BOTTOM", "HOSIERY_TIGHTS", "HOSIERY_STOCKINGS", "HOSIERY_PANTYHOSE", "SOCKS_CASUAL", "SOCKS_SPORTS", "SOCKS_DRESS", "SOCKS_NO_SHOW", "SLEEP_PAJAMA_TOP", "SLEEP_PAJAMA_BOTTOM", "SLEEP_PAJAMA_SET", "SLEEP_NIGHTGOWN", "SLEEP_ROBE", "SLEEP_LOUNGE_TOP", "SLEEP_LOUNGE_PANTS", "SLEEP_SWEATSUIT_SET", "SWIM_TRUNKS", "SWIM_BRIEFS", "SWIM_BOARD_SHORTS", "SWIM_BIKINI_TOP", "SWIM_BIKINI_BOTTOM", "SWIM_ONE_PIECE", "SWIM_COVER_UP", "SWIM_RASH_GUARD", "FOOTWEAR_SNEAKERS", "FOOTWEAR_RUNNING_SHOES", "FOOTWEAR_HIKING_BOOTS", "FOOTWEAR_BOOTS_ANKLE", "FOOTWEAR_BOOTS_KNEE", "FOOTWEAR_BOOTS_CHELSEA", "FOOTWEAR_OXFORDS", "FOOTWEAR_DERBIES", "FOOTWEAR_LOAFERS", "FOOTWEAR_DRESS_SHOES", "FOOTWEAR_HEELS_PUMPS", "FOOTWEAR_HEELS_SANDALS", "FOOTWEAR_SANDALS", "FOOTWEAR_FLIP_FLOPS", "FOOTWEAR_FLATS_BALLET", "FOOTWEAR_MULES", "FOOTWEAR_CLOGS", "FOOTWEAR_ESPADRILLES", "FOOTWEAR_SLIPPERS", "FOOTWEAR_WEDGES", "ACCESSORIES_BASEBALL_CAP", "ACCESSORIES_BEANIE", "ACCESSORIES_BUCKET_HAT", "ACCESSORIES_WIDE_BRIM_HAT", "ACCESSORIES_VISOR", "ACCESSORIES_SCARF", "ACCESSORIES_GLOVES", "ACCESSORIES_MITTENS", "ACCESSORIES_BELT", "ACCESSORIES_TIE", "ACCESSORIES_BOW_TIE", "ACCESSORIES_POCKET_SQUARE", "ACCESSORIES_SUSPENDERS", "ACCESSORIES_EARMUFFS", "ACCESSORIES_SUNGLASSES", "ACCESSORIES_EYEGLASS_FRAMES", "ACCESSORIES_WATCH", "ACCESSORIES_NECKLACE", "ACCESSORIES_BRACELET", "ACCESSORIES_EARRINGS", "ACCESSORIES_RING", "ACCESSORIES_ANKLET", "ACCESSORIES_BROOCH", "ACCESSORIES_HAIR_ACCESSORY", "ACCESSORIES_WALLET", "ACCESSORIES_CARD_HOLDER", "ACCESSORIES_KEYCHAIN", "ACCESSORIES_HANDKERCHIEF", "ACCESSORIES_FACE_MASK", "BAGS_TOTE", "BAGS_SHOULDER", "BAGS_CROSSBODY", "BAGS_BACKPACK", "BAGS_DUFFEL", "BAGS_SATCHEL", "BAGS_BELT_BAG", "BAGS_BRIEFCASE", "BAGS_LAPTOP", "LUGGAGE_CARRY_ON", "LUGGAGE_CHECKED", "LUGGAGE_GARMENT_BAG", "SPECIAL_MATERNITY_TOP", "SPECIAL_MATERNITY_BOTTOM", "SPECIAL_MATERNITY_DRESS", "SPECIAL_ADAPTIVE_TOP", "SPECIAL_ADAPTIVE_BOTTOM", "SPECIAL_UNDER_SCRUB_TOP", "SPECIAL_UNDER_SCRUB_PANTS", "SPECIAL_WORK_OVERALLS", "SPECIAL_APRON", "SPECIAL_COSTUME", "SPECIAL_FORMAL_SUIT_JACKET", "SPECIAL_FORMAL_SUIT_PANTS", "SPECIAL_FORMAL_SUIT_SKIRT", "SPECIAL_FORMAL_VEST", "TRADITIONAL_KIMONO", "TRADITIONAL_HANBOK", "TRADITIONAL_SARI", "TRADITIONAL_QIPAO_CHEONGSAM", "TRADITIONAL_KURTA", "TRADITIONAL_DIRNDL", "TRADITIONAL_KILT"]] = Field(
         description="Pick three most relevent low level category for the user's request."
@@ -460,7 +468,8 @@ def execute_opensearch(categories: List[str], user_input: str):
     try:
         embedding_response = client.embeddings.create(
             model="text-embedding-3-small",
-            input=user_input
+            input=user_input,
+            dimensions=512  # Reduce from 1536 to 512 dimensions
         )
         query_embedding = embedding_response.data[0].embedding
     except Exception as e:
@@ -491,7 +500,7 @@ def execute_opensearch(categories: List[str], user_input: str):
         semantic_queries = []
         
         # Search in both description embeddings
-        if len(query_embedding) == 1536:  # Validate embedding dimensions
+        if len(query_embedding) == 512:  # Validate embedding dimensions
             semantic_queries.extend([
                 {
                     "script_score": {
@@ -518,7 +527,7 @@ def execute_opensearch(categories: List[str], user_input: str):
     q = {
         "query": {
             "bool": {
-                "should": query_parts,  # Any of these can match
+                #"should": query_parts,  # Any of these can match
                 "filter": [
                     {"terms": {"product_category": categories}},  # Required category match 
                     {"term": {"available": True}}  # Only available products
