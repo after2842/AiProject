@@ -528,7 +528,7 @@ def execute_opensearch(categories: List[str], user_input: str):
     q = {
         "query": {
             "bool": {
-                #"should": query_parts,  # Any of these can match
+                "should": query_parts,  # Any of these can match
                 "filter": [
                     {"terms": {"product_category": categories}},  # Required category match 
                     {"term": {"available": True}}  # Only available products
