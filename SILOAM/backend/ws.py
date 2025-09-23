@@ -538,7 +538,7 @@ def execute_opensearch(categories: List[str], user_input: str):
         },
         "sort": [
             {"_score": {"order": "desc"}},  # Relevance first
-            {"price": {"order": "asc"}}     # Then by price
+            {"price": {"order": "asc"}}     
         ],
         "size": 10,
     }
