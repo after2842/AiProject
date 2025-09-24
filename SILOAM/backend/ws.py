@@ -388,8 +388,6 @@ async def _pump_client_to_openai(client_ws: WebSocket,
                 await openai_ws.send(json.dumps(obj))
                 continue
 
-            # Your app may have other messages; ignore or handle here
-            # e.g., {"type":"debug"} etc.
             continue
 
         # Client disconnect or other frames
