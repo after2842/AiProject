@@ -379,7 +379,6 @@ async def _pump_client_to_openai(client_ws: WebSocket,
             mtype = obj.get("type", "")
 
             if mtype == "input_audio_buffer.append":
-                # Already base64 from client; forward as-is
                 await openai_ws.send(json.dumps(obj))
                 continue
 
