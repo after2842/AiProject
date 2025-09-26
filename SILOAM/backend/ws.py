@@ -388,8 +388,6 @@ async def _pump_client_to_openai(client_ws: WebSocket,
                 continue
 
             continue
-
-        # Client disconnect or other frames
         if msg["type"] in ("websocket.disconnect", "websocket.close"):
             raise WebSocketDisconnect()
 
