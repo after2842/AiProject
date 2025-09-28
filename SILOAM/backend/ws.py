@@ -382,7 +382,7 @@ async def _pump_client_to_openai(client_ws: WebSocket,
                 await openai_ws.send(json.dumps(obj))
                 continue
 
-            # Forward commit/clear if you drive turns from client side
+
             if mtype in ("input_audio_buffer.commit", "input_audio_buffer.clear"):
                 await openai_ws.send(json.dumps(obj))
                 continue
