@@ -367,7 +367,6 @@ async def _pump_client_to_openai(client_ws: WebSocket,
             await openai_ws.send(json.dumps(evt))
             continue
 
-        # Text (JSON) payload from client
         if msg["type"] == "websocket.receive" and msg.get("text"):
             print("client sent text")
             try:
