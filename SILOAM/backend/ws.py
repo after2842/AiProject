@@ -525,7 +525,7 @@ def execute_opensearch(categories: List[str], user_input: str):
                 "should": query_parts,  # 
                 "filter": [
                     {"terms": {"product_category": categories}},  # Required category match 
-                    {"term": {"available": True}}  # Only available products
+                    {"term": {"available": True}}  
                 ],
                 "minimum_should_match": 1  # Atleast one should clause must mat
             }
