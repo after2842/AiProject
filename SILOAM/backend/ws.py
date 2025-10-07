@@ -399,7 +399,7 @@ async def stream_tts(text: str, client_ws: WebSocket):
         ) as resp:
             print("resp: ", resp)
             async for chunk in resp.iter_bytes():
-                #print(f"Sending audio chunk: {len(chunk)} bytes")
+   
                 await client_ws.send_bytes(chunk)
     finally:
         await client_ws.send_text(json.dumps({"type": "tts.end"}))
