@@ -455,7 +455,6 @@ class ProductCategoryDecision(BaseModel):
         description="Pick three most relevent low level category for the user's request."
     )
     # too_broad: bool = Field(description="Is user's request too general to pick three categories?")
-    # confidence: confloat(ge=0, le=1) = Field(description="Confidence 0..1 for the broad decision")
 
 def execute_opensearch(categories: List[str], user_input: str):
     # Generate embedding
