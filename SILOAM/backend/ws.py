@@ -372,7 +372,7 @@ async def _pump_client_to_openai(client_ws: WebSocket,
             try:
                 obj = json.loads(msg["text"])
             except Exception:
-                # ignore invalid text
+               
                 continue
 
             mtype = obj.get("type", "")
