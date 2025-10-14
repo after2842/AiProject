@@ -352,7 +352,7 @@ async def _pump_client_to_openai(client_ws: WebSocket,
     while True:
         msg = await client_ws.receive()
 
-        # Binary payload from client
+
         if msg["type"] == "websocket.receive" and msg.get("bytes") is not None:
             #print("client sent binary")
             if not ALLOW_BINARY_PCM_FROM_CLIENT:
