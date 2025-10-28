@@ -359,7 +359,7 @@ async def _pump_client_to_openai(client_ws: WebSocket,
                 # ignore or you can send back an error JSON
                 continue
             raw = msg["bytes"]
-            # Wrap to OpenAI's append event with base64 audio (server-side VAD will handle turn)
+
             evt = {
                 "type": "input_audio_buffer.append",
                 "audio": base64.b64encode(raw).decode("ascii"),
